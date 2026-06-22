@@ -31,7 +31,7 @@
     const { useState, useEffect, useCallback, useRef } = React;
 
     const SUPABASE_URL = "https://jwamejlzhvultfomtarb.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_JtW6vS6OYMc14TSLnM1nXw_DV5jg8HC";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
 
     async function sbFetch(path, options = {}) {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
