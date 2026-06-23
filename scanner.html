@@ -118,14 +118,17 @@ function App(){
 
   async function handleScan(text){
     // QR Code format: "student:123"
-    if(!text.startsWith("student:")){
-      setLastScan({success:false,message:"QR Code ไม่ถูกต้อง"});
-      return;
+    // รองรับทั้งเลข 13 หลัก และรูปแบบ student:id
+    let student=null;
+    if(text.startsWith("student:")){
+      const studentId=parseInt(text.replace("student:",""));
+      student=students.find(s=>s.id===studentId);
+    }else{
+      // ค้นหาจากเลขประจำตัว 13 หลัก
+      student=students.find(s=>s.student_id_no===text.trim());
     }
-    const studentId=parseInt(text.replace("student:",""));
-    const student=students.find(s=>s.id===studentId);
     if(!student){
-      setLastScan({success:false,message:"ไม่พบข้อมูลนักเรียน"});
+      setLastScan({success:false,message:`ไม่พบข้อมูลนักเรียน (${text})`});
       return;
     }
     try{
@@ -319,7 +322,8 @@ function StudentQR({student}){
   },[show,student.id]);
 
   // Simple QR Code generator (ใช้ API สาธารณะ)
-  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=student:${student.id}&bgcolor=ffffff&color=1e3a5f&margin=10`;
+  const qrData=student.student_id_no||`student:${student.id}`;
+  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}&bgcolor=ffffff&color=1e3a5f&margin=10`;
 
   return(
     <div style={{background:C.white,borderRadius:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",overflow:"hidden"}}>
@@ -338,9 +342,17 @@ function StudentQR({student}){
           <img src={qrUrl} alt={`QR ${student.full_name}`} style={{width:200,height:200,borderRadius:12,border:`2px solid ${C.gray200}`}}/>
           <div style={{fontWeight:700,fontSize:16,color:C.gray900,marginTop:12}}>{student.full_name}</div>
           <div style={{fontSize:13,color:C.gray400,marginBottom:12}}>เลขที่ {student.student_no} · {student.classes?.name}</div>
-          <div style={{fontSize:12,color:C.gray400,background:C.gray50,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
-            ID: student:{student.id}
+          <div style={{fontSize:13,color:C.gray400,background:C.gray50,borderRadius:8,padding:"8px 16px",display:"inline-block",marginTop:4}}>
+            {student.student_id_no
+              ? <span>🪪 เลขประจำตัว: <strong style={{color:C.gray900}}>{student.student_id_no}</strong></span>
+              : <span>ID: student:{student.id}</span>
+            }
           </div>
+          {!student.student_id_no&&(
+            <div style={{marginTop:8,fontSize:12,color:C.yellow,background:C.yellowLight,borderRadius:8,padding:"6px 12px"}}>
+              ⚠️ ยังไม่มีเลขประจำตัว 13 หลัก — ใส่ข้อมูลใน Excel แล้วนำเข้าใหม่
+            </div>
+          )}
           <div style={{marginTop:12,fontSize:12,color:C.gray400}}>📱 บันทึกภาพหน้าจอเพื่อพิมพ์บัตรนักเรียน</div>
         </div>
       )}
