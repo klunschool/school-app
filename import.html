@@ -94,7 +94,15 @@ function App(){
           const name=String(row[0]||"").trim();
           const no=parseInt(row[1])||0;
           const cls=String(row[2]||"").trim();
-          const sid=String(row[3]||"").trim();
+          // แปลงเลขประจำตัว: รองรับทั้ง text และ number (กรณี Excel เก็บเป็น number)
+          let sid="";
+          if(row[3]!==undefined&&row[3]!==""){
+            // ถ้าเป็น number ให้แปลงเป็น string และตัด .0 ทิ้ง
+            const rawSid=typeof row[3]==="number"
+              ? Math.round(row[3]).toString()
+              : String(row[3]).replace(/\.0+$/,"").trim();
+            sid=rawSid;
+          }
           if(!name){errs.push(`แถว ${i+1}: ไม่มีชื่อ`);continue;}
           if(!cls){errs.push(`แถว ${i+1}: ไม่มีห้องเรียน`);continue;}
           parsed.push({name,no,cls,sid,_row:i+1});
