@@ -139,13 +139,15 @@ function App(){
     const classMap={};
     for(const name of classNames){
       try{
-        // ดูก่อนว่ามีอยู่แล้วไหม
-        const existing=await sbFetch(`classes?name=eq.${encodeURIComponent(name)}&select=id`,{token:auth.session.access_token});
-        if(existing&&existing.length>0){
-          classMap[name]=existing[0].id;
+        // ดึงห้องทั้งหมดแล้วกรองใน JS เพื่อหลีกเลี่ยงปัญหา URL encoding ภาษาไทย
+        const allClasses=await sbFetch("classes?select=id,name",{token:auth.session.access_token});
+        const existing=(allClasses||[]).find(c=>c.name===name);
+        if(existing){
+          classMap[name]=existing.id;
         }else{
           const created=await sbFetch("classes",{method:"POST",token:auth.session.access_token,body:JSON.stringify({name})});
-          classMap[name]=created[0].id;
+          if(created&&created[0]) classMap[name]=created[0].id;
+          else if(created&&created.id) classMap[name]=created.id;
         }
       }catch(e){
         console.error("สร้างห้องไม่ได้:",name,e.message);
