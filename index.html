@@ -143,11 +143,21 @@
       const [students,setStudents]=useState([]);
       const [loading,setLoading]=useState(true);
       useEffect(()=>{
-        Promise.all([
-          sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}),
-          sbFetch("students?select=*,classes(name)&order=full_name.asc",{token}),
-        ]).then(([ann,stu])=>{setAnnouncements(ann||[]);setStudents(stu||[]);}).finally(()=>setLoading(false));
-      },[token]);
+        const fetchData=async()=>{
+          const [ann,tc]=await Promise.all([
+            sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}),
+            sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}),
+          ]);
+          setAnnouncements(ann||[]);
+          if(tc&&tc.length>0){
+            const classIds=tc.map(t=>t.class_id).join(",");
+            const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token});
+            setStudents(stu||[]);
+          }
+          setLoading(false);
+        };
+        fetchData();
+      },[token,profile.id]);
       if(loading)return <Spinner/>;
       return(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -193,7 +203,7 @@
     }
 
     // ---- TEACHER ATTENDANCE ----
-    function TeacherAttendance({token}){
+    function TeacherAttendance({token,profile}){
       const [students,setStudents]=useState([]);
       const [attendance,setAttendance]=useState({});
       const [loading,setLoading]=useState(true);
@@ -201,15 +211,22 @@
       const [saved,setSaved]=useState(false);
       const today=new Date().toISOString().split("T")[0];
       useEffect(()=>{
-        Promise.all([
-          sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}),
-          sbFetch(`attendance?date=eq.${today}&select=*`,{token}),
-        ]).then(([stu,att])=>{
-          setStudents(stu||[]);
+        const fetchData=async()=>{
+          const [tc,att]=await Promise.all([
+            sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}),
+            sbFetch(`attendance?date=eq.${today}&select=*`,{token}),
+          ]);
+          if(tc&&tc.length>0){
+            const classIds=tc.map(t=>t.class_id).join(",");
+            const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token});
+            setStudents(stu||[]);
+          }
           const map={};(att||[]).forEach(a=>{map[a.student_id]=a.status;});
           setAttendance(map);
-        }).finally(()=>setLoading(false));
-      },[token,today]);
+          setLoading(false);
+        };
+        fetchData();
+      },[token,today,profile.id]);
 
       async function saveAttendance(){
         setSaving(true);
@@ -654,7 +671,7 @@
       function renderContent(){
         if(role==="teacher"){
           if(tab==="home")return <TeacherHome token={token} profile={profile}/>;
-          if(tab==="scanner")return <ScannerLink/>;if(tab==="attendance")return <TeacherAttendance token={token}/>;
+          if(tab==="scanner")return <ScannerLink/>;if(tab==="attendance")return <TeacherAttendance token={token} profile={profile}/>;
           if(tab==="grades")return <TeacherGrades token={token}/>;
           if(tab==="announcements")return <AnnouncementsView token={token} profile={profile}/>;
           if(tab==="messages")return <MessagesView token={token} profile={profile}/>;

@@ -67,8 +67,14 @@ function App(){
 
   useEffect(()=>{
     if(!auth)return;
-    sbFetch("students?select=id,full_name,student_no,classes(name)",{token:auth.session.access_token})
-      .then(s=>setStudents(s||[]));
+    // ดึงเฉพาะนักเรียนในห้องที่ครูดูแล
+    sbFetch(`teacher_class?teacher_id=eq.${auth.profile.id}&select=class_id`,{token:auth.session.access_token})
+      .then(async(tc)=>{
+        if(!tc||tc.length===0){setStudents([]);return;}
+        const classIds=tc.map(t=>t.class_id).join(",");
+        const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
+        setStudents(stu||[]);
+      });
   },[auth]);
 
   const loadLogs=useCallback(()=>{
