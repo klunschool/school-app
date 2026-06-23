@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>นำเข้านักเรียน | แอปโรงเรียน</title>
+  <meta name="theme-color" content="#2563EB"/>
+  <link rel="manifest" href="/manifest.json"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Sarabun','Segoe UI',sans-serif;background:#F8FAFC;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    .dropzone{border:2.5px dashed #94A3B8;border-radius:16px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.2s;}
+    .dropzone:hover,.dropzone.dragover{border-color:#2563EB;background:#EFF6FF;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#F1F5F9;color:#475569;font-size:13px;padding:10px 12px;text-align:left;font-weight:700;}
+    td{padding:10px 12px;font-size:14px;border-bottom:1px solid #F1F5F9;color:#0F172A;}
+    tr:hover td{background:#F8FAFC;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useRef,useCallback}=React;
+
+const SUPABASE_URL="https://jwamejlzhvultfomtarb.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
+
+async function sbFetch(path,options={}){
+  const res=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${options.token||SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation",...options.headers},
+    ...options,
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
+  return res.status===204?null:res.json();
+}
+
+const C={
+  primary:"#2563EB",primaryLight:"#EFF6FF",primaryDark:"#1D4ED8",
+  green:"#16A34A",greenLight:"#F0FDF4",
+  red:"#DC2626",redLight:"#FEF2F2",
+  yellow:"#D97706",yellowLight:"#FFFBEB",
+  gray50:"#F8FAFC",gray100:"#F1F5F9",gray200:"#E2E8F0",
+  gray400:"#94A3B8",gray600:"#475569",gray700:"#334155",gray900:"#0F172A",
+  white:"#FFFFFF",
+};
+
+function App(){
+  const auth=(() => {
+    try{const s=localStorage.getItem("school_session");return s?JSON.parse(s):null;}catch{return null;}
+  })();
+
+  const [step,setStep]=useState("upload"); // upload | preview | importing | done
+  const [rows,setRows]=useState([]);
+  const [errors,setErrors]=useState([]);
+  const [progress,setProgress]=useState({done:0,total:0,failed:0});
+  const [dragOver,setDragOver]=useState(false);
+  const fileRef=useRef();
+
+  // ดาวน์โหลด template Excel
+  function downloadTemplate(){
+    const ws=XLSX.utils.aoa_to_sheet([
+      ["ชื่อ-นามสกุล","เลขที่","ห้องเรียน","เลขประจำตัว"],
+      ["ด.ช. สมชาย ใจดี","1","ป.4/2","12345"],
+      ["ด.ญ. สมหญิง รักเรียน","2","ป.4/2","12346"],
+      ["ด.ช. มานะ ตั้งใจ","3","ป.5/1","12347"],
+    ]);
+    ws["!cols"]=[{wch:25},{wch:8},{wch:12},{wch:15}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"นักเรียน");
+    XLSX.writeFile(wb,"template_นักเรียน.xlsx");
+  }
+
+  function parseExcel(file){
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+
+        // ข้ามแถวหัว
+        const parsed=[];
+        const errs=[];
+        for(let i=1;i<data.length;i++){
+          const row=data[i];
+          if(!row[0]&&!row[3])continue; // ข้ามแถวว่าง
+          const name=String(row[0]||"").trim();
+          const no=parseInt(row[1])||0;
+          const cls=String(row[2]||"").trim();
+          const sid=String(row[3]||"").trim();
+          if(!name){errs.push(`แถว ${i+1}: ไม่มีชื่อ`);continue;}
+          if(!cls){errs.push(`แถว ${i+1}: ไม่มีห้องเรียน`);continue;}
+          parsed.push({name,no,cls,sid,_row:i+1});
+        }
+        setRows(parsed);
+        setErrors(errs);
+        if(parsed.length>0)setStep("preview");
+        else alert("ไม่พบข้อมูลนักเรียนในไฟล์ กรุณาตรวจสอบรูปแบบ");
+      }catch(e){
+        alert("อ่านไฟล์ไม่สำเร็จ: "+e.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handleFile(file){
+    if(!file)return;
+    if(!file.name.match(/\.(xlsx|xls|csv)$/i)){
+      alert("กรุณาใช้ไฟล์ .xlsx, .xls หรือ .csv เท่านั้น");
+      return;
+    }
+    parseExcel(file);
+  }
+
+  async function importData(){
+    if(!auth){alert("กรุณาเข้าสู่ระบบก่อน");return;}
+    setStep("importing");
+    setProgress({done:0,total:rows.length,failed:0});
+
+    // รวบรวมห้องเรียนที่ไม่ซ้ำ
+    const classNames=[...new Set(rows.map(r=>r.cls))];
+
+    // สร้างห้องที่ยังไม่มี
+    const classMap={};
+    for(const name of classNames){
+      try{
+        // ดูก่อนว่ามีอยู่แล้วไหม
+        const existing=await sbFetch(`classes?name=eq.${encodeURIComponent(name)}&select=id`,{token:auth.session.access_token});
+        if(existing&&existing.length>0){
+          classMap[name]=existing[0].id;
+        }else{
+          const created=await sbFetch("classes",{method:"POST",token:auth.session.access_token,body:JSON.stringify({name})});
+          classMap[name]=created[0].id;
+        }
+      }catch(e){
+        console.error("สร้างห้องไม่ได้:",name,e.message);
+      }
+    }
+
+    // นำเข้านักเรียนทีละคน
+    let done=0,failed=0;
+    for(const row of rows){
+      try{
+        const classId=classMap[row.cls];
+        if(!classId)throw new Error("ไม่พบห้องเรียน "+row.cls);
+        await sbFetch("students",{
+          method:"POST",
+          token:auth.session.access_token,
+          headers:{Prefer:"resolution=ignore-duplicates,return=minimal"},
+          body:JSON.stringify({
+            full_name:row.name,
+            student_no:row.no||null,
+            class_id:classId,
+            student_id_no:row.sid||null,
+          }),
+        });
+        done++;
+      }catch(e){
+        failed++;
+        console.error("นำเข้าไม่สำเร็จ:",row.name,e.message);
+      }
+      setProgress({done:done+failed,total:rows.length,failed});
+    }
+    setProgress({done,total:rows.length,failed});
+    setStep("done");
+  }
+
+  // ---- UI ----
+  if(!auth){
+    return(
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.primary},#7C3AED)`}}>
+        <div style={{background:C.white,borderRadius:16,padding:32,textAlign:"center",maxWidth:320,width:"90%"}}>
+          <div style={{fontSize:48}}>🔒</div>
+          <div style={{fontSize:18,fontWeight:700,marginTop:12}}>กรุณาเข้าสู่ระบบก่อน</div>
+          <a href="/" style={{display:"block",marginTop:16,background:C.primary,color:C.white,borderRadius:10,padding:"12px",textDecoration:"none",fontWeight:700}}>ไปหน้าหลัก</a>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:680,margin:"0 auto",minHeight:"100vh",background:C.gray50,fontFamily:"'Sarabun',sans-serif",paddingBottom:40}}>
+      {/* Header */}
+      <div style={{background:C.white,padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",position:"sticky",top:0,zIndex:10}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.gray900}}>📥 นำเข้านักเรียนจาก Excel</div>
+        <a href="/" style={{background:C.gray100,borderRadius:8,padding:"6px 14px",fontSize:13,color:C.gray600,textDecoration:"none",fontWeight:600}}>← กลับ</a>
+      </div>
+
+      <div style={{padding:20,display:"flex",flexDirection:"column",gap:16}}>
+
+        {/* Steps indicator */}
+        <div style={{display:"flex",gap:0,background:C.white,borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+          {[{id:"upload",label:"1. อัปโหลด"},{id:"preview",label:"2. ตรวจสอบ"},{id:"importing",label:"3. นำเข้า"},{id:"done",label:"4. เสร็จสิ้น"}].map((s,i)=>{
+            const steps=["upload","preview","importing","done"];
+            const current=steps.indexOf(step);
+            const me=steps.indexOf(s.id);
+            const active=me===current;
+            const done2=me<current;
+            return(
+              <div key={s.id} style={{flex:1,padding:"10px 4px",textAlign:"center",fontSize:12,fontWeight:700,background:active?C.primary:done2?C.primaryLight:"transparent",color:active?C.white:done2?C.primary:C.gray400,borderRight:i<3?`1px solid ${C.gray200}`:"none"}}>
+                {done2?"✓ ":""}{s.label}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* STEP 1: Upload */}
+        {step==="upload"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.3s ease"}}>
+            {/* Template download */}
+            <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.gray700,marginBottom:8}}>📋 รูปแบบ Excel ที่รองรับ</div>
+              <div style={{overflowX:"auto",marginBottom:12}}>
+                <table>
+                  <thead><tr><th>ชื่อ-นามสกุล</th><th>เลขที่</th><th>ห้องเรียน</th><th>เลขประจำตัว</th></tr></thead>
+                  <tbody>
+                    <tr><td>ด.ช. สมชาย ใจดี</td><td>1</td><td>ป.4/2</td><td>12345</td></tr>
+                    <tr><td>ด.ญ. สมหญิง รักเรียน</td><td>2</td><td>ป.4/2</td><td>12346</td></tr>
+                    <tr><td>ด.ช. มานะ ตั้งใจ</td><td>3</td><td>ป.5/1</td><td>12347</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={downloadTemplate} style={{background:C.primaryLight,color:C.primary,border:"none",borderRadius:10,padding:"10px 18px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                ⬇️ ดาวน์โหลด Template Excel
+              </button>
+            </div>
+
+            {/* Drop zone */}
+            <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.gray700,marginBottom:12}}>📂 เลือกหรือลากไฟล์มาวาง</div>
+              <div
+                className={`dropzone${dragOver?" dragover":""}`}
+                onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+                onDragLeave={()=>setDragOver(false)}
+                onDrop={e=>{e.preventDefault();setDragOver(false);handleFile(e.dataTransfer.files[0]);}}
+                onClick={()=>fileRef.current.click()}
+              >
+                <div style={{fontSize:48}}>📊</div>
+                <div style={{fontSize:16,fontWeight:700,color:C.gray700,marginTop:8}}>คลิกเลือกไฟล์ หรือลากมาวางตรงนี้</div>
+                <div style={{fontSize:13,color:C.gray400,marginTop:4}}>รองรับ .xlsx, .xls, .csv</div>
+              </div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: Preview */}
+        {step==="preview"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.3s ease"}}>
+            {/* Summary */}
+            <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.gray700,marginBottom:12}}>📊 สรุปข้อมูลที่พบ</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{background:C.primaryLight,color:C.primary,borderRadius:10,padding:"10px 16px",fontWeight:700,fontSize:15}}>
+                  👩‍🎓 {rows.length} คน
+                </div>
+                <div style={{background:C.greenLight,color:C.green,borderRadius:10,padding:"10px 16px",fontWeight:700,fontSize:15}}>
+                  🏫 {[...new Set(rows.map(r=>r.cls))].length} ห้อง
+                </div>
+                {errors.length>0&&(
+                  <div style={{background:C.yellowLight,color:C.yellow,borderRadius:10,padding:"10px 16px",fontWeight:700,fontSize:15}}>
+                    ⚠️ {errors.length} แถวมีปัญหา
+                  </div>
+                )}
+              </div>
+              {errors.length>0&&(
+                <div style={{marginTop:12,background:C.yellowLight,borderRadius:10,padding:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.yellow,marginBottom:6}}>แถวที่มีปัญหา (จะถูกข้าม):</div>
+                  {errors.map((e,i)=><div key={i} style={{fontSize:13,color:C.gray700}}>• {e}</div>)}
+                </div>
+              )}
+            </div>
+
+            {/* Preview table */}
+            <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.gray700,marginBottom:12}}>ตัวอย่างข้อมูล (10 แถวแรก)</div>
+              <div style={{overflowX:"auto"}}>
+                <table>
+                  <thead>
+                    <tr><th>#</th><th>ชื่อ-นามสกุล</th><th>เลขที่</th><th>ห้อง</th><th>เลขประจำตัว</th></tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0,10).map((r,i)=>(
+                      <tr key={i}>
+                        <td style={{color:C.gray400}}>{r._row}</td>
+                        <td style={{fontWeight:600}}>{r.name}</td>
+                        <td style={{textAlign:"center"}}>{r.no||"—"}</td>
+                        <td><span style={{background:C.primaryLight,color:C.primary,borderRadius:6,padding:"2px 8px",fontSize:12,fontWeight:600}}>{r.cls}</span></td>
+                        <td style={{color:C.gray600}}>{r.sid||"—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {rows.length>10&&<div style={{textAlign:"center",padding:"10px",fontSize:13,color:C.gray400}}>... และอีก {rows.length-10} คน</div>}
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setStep("upload");setRows([]);setErrors([]);}} style={{flex:1,background:C.gray100,color:C.gray700,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                ← เลือกไฟล์ใหม่
+              </button>
+              <button onClick={importData} style={{flex:2,background:C.green,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+                ✅ นำเข้า {rows.length} คน
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Importing */}
+        {step==="importing"&&(
+          <div style={{background:C.white,borderRadius:16,padding:32,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center",animation:"fadeIn 0.3s ease"}}>
+            <div style={{width:56,height:56,border:`4px solid ${C.gray200}`,borderTopColor:C.primary,borderRadius:"50%",animation:"spin 0.7s linear infinite",margin:"0 auto"}}/>
+            <div style={{fontSize:18,fontWeight:700,color:C.gray900,marginTop:20}}>กำลังนำเข้าข้อมูล...</div>
+            <div style={{fontSize:14,color:C.gray600,marginTop:8}}>{progress.done} / {progress.total} คน</div>
+            {/* Progress bar */}
+            <div style={{background:C.gray100,borderRadius:99,height:10,marginTop:16,overflow:"hidden"}}>
+              <div style={{background:C.primary,height:"100%",borderRadius:99,width:`${progress.total>0?(progress.done/progress.total)*100:0}%`,transition:"width 0.3s"}}/>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: Done */}
+        {step==="done"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn 0.3s ease"}}>
+            <div style={{background:C.white,borderRadius:16,padding:32,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",textAlign:"center"}}>
+              <div style={{fontSize:64}}>{progress.failed===0?"🎉":"⚠️"}</div>
+              <div style={{fontSize:20,fontWeight:800,color:progress.failed===0?C.green:C.yellow,marginTop:12}}>
+                {progress.failed===0?"นำเข้าสำเร็จทั้งหมด!":"นำเข้าเสร็จสิ้น"}
+              </div>
+              <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:16,flexWrap:"wrap"}}>
+                <div style={{background:C.greenLight,color:C.green,borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:16}}>
+                  ✅ สำเร็จ {progress.done} คน
+                </div>
+                {progress.failed>0&&(
+                  <div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"10px 20px",fontWeight:700,fontSize:16}}>
+                    ❌ ล้มเหลว {progress.failed} คน
+                  </div>
+                )}
+              </div>
+              <div style={{display:"flex",gap:10,marginTop:20}}>
+                <button onClick={()=>{setStep("upload");setRows([]);setErrors([]);setProgress({done:0,total:0,failed:0});}} style={{flex:1,background:C.gray100,color:C.gray700,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                  นำเข้าไฟล์ใหม่
+                </button>
+                <a href="/" style={{flex:1,background:C.primary,color:C.white,borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  กลับหน้าหลัก
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
