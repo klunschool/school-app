@@ -597,6 +597,36 @@
       );
     }
 
+    function ScannerLink(){
+      return(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{background:"linear-gradient(135deg,#2563EB,#7C3AED)",borderRadius:16,padding:24,textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+            <div style={{fontSize:56}}>📷</div>
+            <div style={{color:"#fff",fontSize:20,fontWeight:800,marginTop:8}}>ระบบสแกนเข้า-ออก</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:14,marginTop:4}}>สแกน QR Code บัตรนักเรียน</div>
+            <a href="/scanner.html" style={{display:"block",marginTop:16,background:"rgba(255,255,255,0.2)",color:"#fff",borderRadius:12,padding:"14px",textDecoration:"none",fontSize:16,fontWeight:700}}>เปิดหน้าสแกน →</a>
+          </div>
+          <div style={{background:"#fff",borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#334155",marginBottom:12}}>วิธีใช้งาน</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[{n:"1",t:"เปิดหน้าสแกน",d:"กดปุ่มด้านบน"},
+                {n:"2",t:"เลือกโหมด",d:"เข้าเรียน หรือ ออก"},
+                {n:"3",t:"สแกน QR",d:"จ่อกล้องที่ QR บัตรนักเรียน"},
+                {n:"4",t:"บันทึกอัตโนมัติ",d:"ระบบบันทึกเวลาทันที"}].map(s=>(
+                <div key={s.n} style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <div style={{width:28,height:28,borderRadius:99,background:"#EFF6FF",color:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>{s.n}</div>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:14,color:"#0F172A"}}>{s.t}</div>
+                    <div style={{fontSize:12,color:"#94A3B8"}}>{s.d}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // ---- MAIN APP ----
     function App(){
       const [auth,setAuth]=useState(()=>{
@@ -618,13 +648,13 @@
       const token=session?.access_token;
       const role=profile?.role;
       const tabs=role==="teacher"
-        ?[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"attendance",icon:"📅",label:"เช็คชื่อ"},{id:"grades",icon:"📊",label:"คะแนน"},{id:"announcements",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"}]
+        ?[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"scanner",icon:"📷",label:"สแกน"},{id:"attendance",icon:"📅",label:"เช็คชื่อ"},{id:"grades",icon:"📊",label:"คะแนน"},{id:"announcements",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"}]
         :[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"announcements",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"}];
 
       function renderContent(){
         if(role==="teacher"){
           if(tab==="home")return <TeacherHome token={token} profile={profile}/>;
-          if(tab==="attendance")return <TeacherAttendance token={token}/>;
+          if(tab==="scanner")return <ScannerLink/>;if(tab==="attendance")return <TeacherAttendance token={token}/>;
           if(tab==="grades")return <TeacherGrades token={token}/>;
           if(tab==="announcements")return <AnnouncementsView token={token} profile={profile}/>;
           if(tab==="messages")return <MessagesView token={token} profile={profile}/>;

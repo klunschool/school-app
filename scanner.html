@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>สแกนเข้า-ออก | แอปโรงเรียน</title>
+  <meta name="theme-color" content="#2563EB"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <link rel="manifest" href="/manifest.json"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <!-- QR Scanner library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Sarabun','Segoe UI',sans-serif;background:#F8FAFC;overscroll-behavior:none;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+    @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
+    #qr-reader{width:100%!important;}
+    #qr-reader video{border-radius:12px!important;}
+    #qr-reader__scan_region{border-radius:12px!important;}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+const SUPABASE_URL="https://jwamejlzhvultfomtarb.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
+
+async function sbFetch(path,options={}){
+  const res=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${options.token||SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation",...options.headers},
+    ...options,
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
+  return res.status===204?null:res.json();
+}
+
+const C={
+  primary:"#2563EB",primaryLight:"#EFF6FF",
+  green:"#16A34A",greenLight:"#F0FDF4",
+  red:"#DC2626",redLight:"#FEF2F2",
+  yellow:"#D97706",yellowLight:"#FFFBEB",
+  gray50:"#F8FAFC",gray100:"#F1F5F9",gray200:"#E2E8F0",
+  gray400:"#94A3B8",gray600:"#475569",gray700:"#334155",gray900:"#0F172A",
+  white:"#FFFFFF",
+};
+
+function App(){
+  const [auth,setAuth]=useState(()=>{
+    try{const s=localStorage.getItem("school_session");return s?JSON.parse(s):null;}catch{return null;}
+  });
+  const [tab,setTab]=useState("scan"); // scan | qrcodes | log
+  const [scanning,setScanning]=useState(false);
+  const [scanMode,setScanMode]=useState("in"); // in | out
+  const [lastScan,setLastScan]=useState(null);
+  const [students,setStudents]=useState([]);
+  const [logs,setLogs]=useState([]);
+  const [loadingLogs,setLoadingLogs]=useState(false);
+  const scannerRef=useRef(null);
+  const html5QrRef=useRef(null);
+
+  useEffect(()=>{
+    if(!auth)return;
+    sbFetch("students?select=id,full_name,student_no,classes(name)",{token:auth.session.access_token})
+      .then(s=>setStudents(s||[]));
+  },[auth]);
+
+  const loadLogs=useCallback(()=>{
+    if(!auth)return;
+    setLoadingLogs(true);
+    const today=new Date().toISOString().split("T")[0];
+    sbFetch(`checkin_log?scanned_at=gte.${today}T00:00:00&select=*,students(full_name,student_no)&order=scanned_at.desc&limit=50`,{token:auth.session.access_token})
+      .then(l=>setLogs(l||[])).finally(()=>setLoadingLogs(false));
+  },[auth]);
+
+  useEffect(()=>{
+    if(tab==="log")loadLogs();
+  },[tab,loadLogs]);
+
+  async function startScanner(){
+    setScanning(true);
+    setLastScan(null);
+    setTimeout(()=>{
+      const html5Qr=new Html5Qrcode("qr-reader");
+      html5QrRef.current=html5Qr;
+      html5Qr.start(
+        {facingMode:"environment"},
+        {fps:10,qrbox:{width:250,height:250}},
+        async(decodedText)=>{
+          await html5Qr.stop().catch(()=>{});
+          setScanning(false);
+          await handleScan(decodedText);
+        },
+        ()=>{}
+      ).catch(()=>{setScanning(false);alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง");});
+    },300);
+  }
+
+  function stopScanner(){
+    if(html5QrRef.current){
+      html5QrRef.current.stop().catch(()=>{});
+      html5QrRef.current=null;
+    }
+    setScanning(false);
+  }
+
+  async function handleScan(text){
+    // QR Code format: "student:123"
+    if(!text.startsWith("student:")){
+      setLastScan({success:false,message:"QR Code ไม่ถูกต้อง"});
+      return;
+    }
+    const studentId=parseInt(text.replace("student:",""));
+    const student=students.find(s=>s.id===studentId);
+    if(!student){
+      setLastScan({success:false,message:"ไม่พบข้อมูลนักเรียน"});
+      return;
+    }
+    try{
+      await sbFetch("checkin_log",{
+        method:"POST",
+        token:auth.session.access_token,
+        body:JSON.stringify({student_id:studentId,type:scanMode,scanned_by:auth.profile.id}),
+      });
+      setLastScan({
+        success:true,
+        type:scanMode,
+        student,
+        time:new Date().toLocaleTimeString("th-TH",{timeStyle:"short"}),
+      });
+    }catch(e){
+      setLastScan({success:false,message:"บันทึกไม่สำเร็จ: "+e.message});
+    }
+  }
+
+  if(!auth){
+    return(
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.primary},#7C3AED)`,fontFamily:"'Sarabun',sans-serif"}}>
+        <div style={{background:C.white,borderRadius:16,padding:32,textAlign:"center",maxWidth:320,width:"90%"}}>
+          <div style={{fontSize:48}}>🏫</div>
+          <div style={{fontSize:18,fontWeight:700,marginTop:12,color:C.gray900}}>กรุณาเข้าสู่ระบบก่อน</div>
+          <div style={{fontSize:14,color:C.gray600,marginTop:8}}>เปิดแอปหลักและเข้าสู่ระบบ แล้วกลับมาที่หน้านี้</div>
+          <a href="/" style={{display:"block",marginTop:16,background:C.primary,color:C.white,borderRadius:10,padding:"12px",textDecoration:"none",fontWeight:700}}>ไปหน้าหลัก</a>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.gray50,fontFamily:"'Sarabun',sans-serif",paddingBottom:80}}>
+      {/* Header */}
+      <div style={{background:C.white,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",position:"sticky",top:0,zIndex:10}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:800,color:C.gray900}}>📷 ระบบสแกนเข้า-ออก</div>
+          <div style={{fontSize:12,color:C.gray400}}>{auth.profile?.full_name}</div>
+        </div>
+        <a href="/" style={{background:C.gray100,borderRadius:8,padding:"6px 12px",fontSize:12,color:C.gray600,textDecoration:"none"}}>← กลับ</a>
+      </div>
+
+      <div style={{padding:16}}>
+        {/* Tab */}
+        <div style={{display:"flex",background:C.gray100,borderRadius:12,padding:4,marginBottom:16,gap:4}}>
+          {[{id:"scan",label:"📷 สแกน"},{id:"qrcodes",label:"🪪 QR นักเรียน"},{id:"log",label:"📋 ประวัติ"}].map(t=>(
+            <button key={t.id} onClick={()=>{stopScanner();setTab(t.id);}} style={{flex:1,padding:"8px 4px",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:tab===t.id?C.white:"transparent",color:tab===t.id?C.primary:C.gray600,boxShadow:tab===t.id?"0 1px 4px rgba(0,0,0,0.1)":"none",transition:"all 0.15s"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* SCAN TAB */}
+        {tab==="scan"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {/* Mode selector */}
+            <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.gray700,marginBottom:12}}>เลือกโหมดสแกน</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setScanMode("in")} style={{flex:1,padding:"12px",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",background:scanMode==="in"?C.greenLight:"transparent",color:scanMode==="in"?C.green:C.gray600,outline:scanMode==="in"?`2px solid ${C.green}`:`2px solid ${C.gray200}`}}>
+                  🟢 เข้าเรียน
+                </button>
+                <button onClick={()=>setScanMode("out")} style={{flex:1,padding:"12px",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",background:scanMode==="out"?C.redLight:"transparent",color:scanMode==="out"?C.red:C.gray600,outline:scanMode==="out"?`2px solid ${C.red}`:`2px solid ${C.gray200}`}}>
+                  🔴 ออก
+                </button>
+              </div>
+            </div>
+
+            {/* Scanner */}
+            <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              {!scanning?(
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:64,marginBottom:8}}>📷</div>
+                  <div style={{fontSize:15,fontWeight:600,color:C.gray700,marginBottom:4}}>พร้อมสแกน QR Code</div>
+                  <div style={{fontSize:13,color:C.gray400,marginBottom:20}}>โหมด: {scanMode==="in"?"🟢 เข้าเรียน":"🔴 ออก"}</div>
+                  <button onClick={startScanner} style={{background:C.primary,color:C.white,border:"none",borderRadius:12,padding:"14px 32px",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%"}}>
+                    เปิดกล้องสแกน
+                  </button>
+                </div>
+              ):(
+                <div>
+                  <div id="qr-reader" style={{width:"100%",borderRadius:12,overflow:"hidden"}}/>
+                  <button onClick={stopScanner} style={{marginTop:12,width:"100%",background:C.red,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                    ยกเลิก
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Result */}
+            {lastScan&&(
+              <div style={{background:lastScan.success?C.greenLight:C.redLight,borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",animation:"fadeIn 0.3s ease",border:`2px solid ${lastScan.success?C.green:C.red}`}}>
+                {lastScan.success?(
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:48,animation:"pulse 0.5s ease"}}>✅</div>
+                    <div style={{fontSize:18,fontWeight:800,color:C.green,marginTop:8}}>
+                      {lastScan.type==="in"?"เข้าเรียนสำเร็จ!":"บันทึกออกสำเร็จ!"}
+                    </div>
+                    <div style={{fontSize:22,fontWeight:700,color:C.gray900,marginTop:8}}>{lastScan.student.full_name}</div>
+                    <div style={{fontSize:14,color:C.gray600}}>เลขที่ {lastScan.student.student_no} · {lastScan.student.classes?.name}</div>
+                    <div style={{fontSize:20,fontWeight:800,color:lastScan.type==="in"?C.green:C.red,marginTop:8}}>🕐 {lastScan.time}</div>
+                    <button onClick={startScanner} style={{marginTop:16,width:"100%",background:C.primary,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                      สแกนคนถัดไป
+                    </button>
+                  </div>
+                ):(
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:48}}>❌</div>
+                    <div style={{fontSize:16,fontWeight:700,color:C.red,marginTop:8}}>{lastScan.message}</div>
+                    <button onClick={startScanner} style={{marginTop:16,width:"100%",background:C.primary,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                      ลองใหม่
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* QR CODES TAB */}
+        {tab==="qrcodes"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.gray700,marginBottom:4}}>🪪 QR Code ประจำตัวนักเรียน</div>
+              <div style={{fontSize:13,color:C.gray400}}>กดที่นักเรียนเพื่อแสดง QR Code สำหรับพิมพ์หรือบันทึก</div>
+            </div>
+            {students.length===0?(
+              <div style={{textAlign:"center",padding:32,color:C.gray400}}>
+                <div style={{fontSize:36}}>👩‍🎓</div>
+                <div style={{marginTop:8}}>ยังไม่มีข้อมูลนักเรียน</div>
+              </div>
+            ):students.map(s=>(
+              <StudentQR key={s.id} student={s}/>
+            ))}
+          </div>
+        )}
+
+        {/* LOG TAB */}
+        {tab==="log"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:C.gray700}}>📋 ประวัติการสแกนวันนี้</div>
+                <div style={{fontSize:13,color:C.gray400}}>{logs.length} รายการ</div>
+              </div>
+              <button onClick={loadLogs} style={{background:C.primaryLight,color:C.primary,border:"none",borderRadius:8,padding:"6px 12px",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                🔄 รีเฟรช
+              </button>
+            </div>
+            {loadingLogs?(
+              <div style={{display:"flex",justifyContent:"center",padding:32}}>
+                <div style={{width:32,height:32,border:`3px solid ${C.gray200}`,borderTopColor:C.primary,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
+              </div>
+            ):logs.length===0?(
+              <div style={{textAlign:"center",padding:32,color:C.gray400}}>
+                <div style={{fontSize:36}}>📋</div>
+                <div style={{marginTop:8}}>ยังไม่มีการสแกนวันนี้</div>
+              </div>
+            ):logs.map((log,i)=>(
+              <div key={log.id} style={{background:C.white,borderRadius:12,padding:"12px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:12,animation:"fadeIn 0.2s ease"}}>
+                <div style={{width:40,height:40,borderRadius:99,background:log.type==="in"?C.greenLight:C.redLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                  {log.type==="in"?"🟢":"🔴"}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,color:C.gray900}}>{log.students?.full_name||"—"}</div>
+                  <div style={{fontSize:12,color:C.gray400}}>เลขที่ {log.students?.student_no||"—"}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:log.type==="in"?C.green:C.red}}>{log.type==="in"?"เข้า":"ออก"}</div>
+                  <div style={{fontSize:12,color:C.gray400}}>{new Date(log.scanned_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// QR Code component สำหรับแต่ละนักเรียน
+function StudentQR({student}){
+  const [show,setShow]=useState(false);
+  const canvasRef=useRef(null);
+
+  useEffect(()=>{
+    if(!show||!canvasRef.current)return;
+    // วาด QR Code ด้วย canvas (ใช้ข้อมูล student:id)
+    drawQR(canvasRef.current,`student:${student.id}`);
+  },[show,student.id]);
+
+  // Simple QR Code generator (ใช้ API สาธารณะ)
+  const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=student:${student.id}&bgcolor=ffffff&color=1e3a5f&margin=10`;
+
+  return(
+    <div style={{background:C.white,borderRadius:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)",overflow:"hidden"}}>
+      <button onClick={()=>setShow(!show)} style={{width:"100%",background:"transparent",border:"none",padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+        <div style={{width:40,height:40,borderRadius:99,background:C.primaryLight,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,flexShrink:0}}>
+          {student.student_no||"—"}
+        </div>
+        <div style={{textAlign:"left",flex:1}}>
+          <div style={{fontWeight:700,fontSize:14,color:C.gray900}}>{student.full_name}</div>
+          <div style={{fontSize:12,color:C.gray400}}>{student.classes?.name||"—"}</div>
+        </div>
+        <div style={{color:C.gray400,fontSize:18}}>{show?"▲":"▼"}</div>
+      </button>
+      {show&&(
+        <div style={{borderTop:`1px solid ${C.gray100}`,padding:20,textAlign:"center",animation:"fadeIn 0.2s ease"}}>
+          <img src={qrUrl} alt={`QR ${student.full_name}`} style={{width:200,height:200,borderRadius:12,border:`2px solid ${C.gray200}`}}/>
+          <div style={{fontWeight:700,fontSize:16,color:C.gray900,marginTop:12}}>{student.full_name}</div>
+          <div style={{fontSize:13,color:C.gray400,marginBottom:12}}>เลขที่ {student.student_no} · {student.classes?.name}</div>
+          <div style={{fontSize:12,color:C.gray400,background:C.gray50,borderRadius:8,padding:"6px 12px",display:"inline-block"}}>
+            ID: student:{student.id}
+          </div>
+          <div style={{marginTop:12,fontSize:12,color:C.gray400}}>📱 บันทึกภาพหน้าจอเพื่อพิมพ์บัตรนักเรียน</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function drawQR(canvas,text){
+  // placeholder - ใช้ img tag แทน
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
