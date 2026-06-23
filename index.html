@@ -144,17 +144,21 @@
       const [loading,setLoading]=useState(true);
       useEffect(()=>{
         const fetchData=async()=>{
-          const [ann,tc]=await Promise.all([
-            sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}),
-            sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}),
-          ]);
-          setAnnouncements(ann||[]);
-          if(tc&&tc.length>0){
-            const classIds=tc.map(t=>t.class_id).join(",");
-            const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token});
-            setStudents(stu||[]);
-          }
-          setLoading(false);
+          try{
+            const ann=await sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}).catch(()=>[]);
+            setAnnouncements(ann||[]);
+            let tc=[];
+            try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
+            if(tc&&tc.length>0){
+              const classIds=tc.map(t=>t.class_id).join(",");
+              const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
+              setStudents(stu||[]);
+            }else{
+              const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
+              setStudents(stu||[]);
+            }
+          }catch(e){console.error(e);}
+          finally{setLoading(false);}
         };
         fetchData();
       },[token,profile.id]);
@@ -212,18 +216,22 @@
       const today=new Date().toISOString().split("T")[0];
       useEffect(()=>{
         const fetchData=async()=>{
-          const [tc,att]=await Promise.all([
-            sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}),
-            sbFetch(`attendance?date=eq.${today}&select=*`,{token}),
-          ]);
-          if(tc&&tc.length>0){
-            const classIds=tc.map(t=>t.class_id).join(",");
-            const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token});
-            setStudents(stu||[]);
-          }
-          const map={};(att||[]).forEach(a=>{map[a.student_id]=a.status;});
-          setAttendance(map);
-          setLoading(false);
+          try{
+            let tc=[];
+            try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
+            const att=await sbFetch(`attendance?date=eq.${today}&select=*`,{token}).catch(()=>[]);
+            if(tc&&tc.length>0){
+              const classIds=tc.map(t=>t.class_id).join(",");
+              const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
+              setStudents(stu||[]);
+            }else{
+              const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
+              setStudents(stu||[]);
+            }
+            const map={};(att||[]).forEach(a=>{map[a.student_id]=a.status;});
+            setAttendance(map);
+          }catch(e){console.error(e);}
+          finally{setLoading(false);}
         };
         fetchData();
       },[token,today,profile.id]);
