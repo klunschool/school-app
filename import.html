@@ -153,12 +153,12 @@ function App(){
     }
 
     // นำเข้านักเรียนทีละคน
-    let done=0,failed=0;
+    let done=0,failed=0,failedList=[];
     for(const row of rows){
       try{
         const classId=classMap[row.cls];
         if(!classId)throw new Error("ไม่พบห้องเรียน "+row.cls);
-        await sbFetch("students",{
+        const result=await sbFetch("students",{
           method:"POST",
           token:auth.session.access_token,
           headers:{Prefer:"resolution=ignore-duplicates,return=minimal"},
@@ -170,13 +170,15 @@ function App(){
           }),
         });
         done++;
+        console.log("นำเข้าสำเร็จ:",row.name);
       }catch(e){
         failed++;
+        failedList.push({name:row.name,error:e.message});
         console.error("นำเข้าไม่สำเร็จ:",row.name,e.message);
       }
       setProgress({done:done+failed,total:rows.length,failed});
     }
-    setProgress({done,total:rows.length,failed});
+    setProgress({done,total:rows.length,failed,failedList});
     setStep("done");
   }
 
@@ -352,6 +354,18 @@ function App(){
                     ❌ ล้มเหลว {progress.failed} คน
                   </div>
                 )}
+              </div>
+              {progress.failedList&&progress.failedList.length>0&&(
+                <div style={{marginTop:12,background:C.redLight,borderRadius:10,padding:12,textAlign:"left",maxHeight:200,overflowY:"auto"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.red,marginBottom:6}}>รายละเอียด error:</div>
+                  {progress.failedList.map((f,i)=>(
+                    <div key={i} style={{fontSize:12,color:C.gray700,marginBottom:4}}>
+                      <strong>{f.name}</strong>: {f.error}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"none"}}>
               </div>
               <div style={{display:"flex",gap:10,marginTop:20}}>
                 <button onClick={()=>{setStep("upload");setRows([]);setErrors([]);setProgress({done:0,total:0,failed:0});}} style={{flex:1,background:C.gray100,color:C.gray700,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
