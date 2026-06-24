@@ -147,17 +147,22 @@
           try{
             const ann=await sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}).catch(()=>[]);
             setAnnouncements(ann||[]);
-            let tc=[];
-            try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
+            // ดึง teacher_class ก่อน
+            const tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
+            console.log("teacher_class result:",tc);
             if(tc&&tc.length>0){
               const classIds=tc.map(t=>t.class_id).join(",");
+              console.log("classIds:",classIds);
               const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
+              console.log("students result:",stu);
               setStudents(stu||[]);
             }else{
+              console.log("no teacher_class found, fetching all students");
               const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
+              console.log("all students:",stu);
               setStudents(stu||[]);
             }
-          }catch(e){console.error(e);}
+          }catch(e){console.error("fetchData error:",e);}
           finally{setLoading(false);}
         };
         fetchData();
