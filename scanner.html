@@ -41,33 +41,6 @@ async function sbFetch(path,options={}){
   return res.status===204?null:res.json();
 }
 
-function cleanIds(rows,key){
-  return [...new Set((rows||[]).map(r=>Number(r[key])).filter(Boolean))];
-}
-
-async function loadTeacherStudents(profile,token){
-  const teacherClasses=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(err=>{
-    console.error("teacher_class",err);
-    return [];
-  });
-  const classIds=cleanIds(teacherClasses,"class_id");
-  if(classIds.length===0)return [];
-
-  const idList=classIds.join(",");
-  const [students,classes]=await Promise.all([
-    sbFetch(`students?class_id=in.(${idList})&select=id,full_name,student_no,class_id,student_id_no&order=student_no.asc`,{token}).catch(err=>{
-      console.error("students",err);
-      return [];
-    }),
-    sbFetch(`classes?id=in.(${idList})&select=id,name`,{token}).catch(()=>[]),
-  ]);
-  const classNameById={};
-  (classes||[]).forEach(c=>{classNameById[c.id]=c.name;});
-  return (students||[])
-    .map(s=>({...s,classes:{name:classNameById[s.class_id]||""}}))
-    .sort((a,b)=>(Number(a.student_no)||0)-(Number(b.student_no)||0));
-}
-
 const C={
   primary:"#2563EB",primaryLight:"#EFF6FF",
   green:"#16A34A",greenLight:"#F0FDF4",
@@ -94,7 +67,14 @@ function App(){
 
   useEffect(()=>{
     if(!auth)return;
-    loadTeacherStudents(auth.profile,auth.session.access_token).then(setStudents);
+    // ดึงเฉพาะนักเรียนในห้องที่ครูดูแล
+    sbFetch(`teacher_class?teacher_id=eq.${auth.profile.id}&select=class_id`,{token:auth.session.access_token})
+      .then(async(tc)=>{
+        if(!tc||tc.length===0){setStudents([]);return;}
+        const classIds=tc.map(t=>t.class_id).join(",");
+        const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
+        setStudents(stu||[]);
+      });
   },[auth]);
 
   const loadLogs=useCallback(()=>{
