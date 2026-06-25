@@ -1,7 +1,7 @@
 {
-  "name": "แอปโรงเรียน",
-  "short_name": "โรงเรียน",
-  "description": "ระบบแอปโรงเรียนสำหรับครู นักเรียน และผู้ปกครอง",
+  "name": "Klunwittaya School",
+  "short_name": "Klunwittaya",
+  "description": "Klunwittaya School Management App",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#2563EB",

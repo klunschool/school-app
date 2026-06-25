@@ -41,33 +41,6 @@ async function sbFetch(path,options={}){
   return res.status===204?null:res.json();
 }
 
-function cleanIds(rows,key){
-  return [...new Set((rows||[]).map(r=>Number(r[key])).filter(Boolean))];
-}
-
-async function loadTeacherStudents(profile,token){
-  const teacherClasses=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(err=>{
-    console.error("teacher_class",err);
-    return [];
-  });
-  const classIds=cleanIds(teacherClasses,"class_id");
-  if(classIds.length===0)return [];
-
-  const idList=classIds.join(",");
-  const [students,classes]=await Promise.all([
-    sbFetch(`students?class_id=in.(${idList})&select=id,full_name,student_no,class_id,student_id_no&order=student_no.asc`,{token}).catch(err=>{
-      console.error("students",err);
-      return [];
-    }),
-    sbFetch(`classes?id=in.(${idList})&select=id,name`,{token}).catch(()=>[]),
-  ]);
-  const classNameById={};
-  (classes||[]).forEach(c=>{classNameById[c.id]=c.name;});
-  return (students||[])
-    .map(s=>({...s,classes:{name:classNameById[s.class_id]||""}}))
-    .sort((a,b)=>(Number(a.student_no)||0)-(Number(b.student_no)||0));
-}
-
 const C={
   primary:"#2563EB",primaryLight:"#EFF6FF",
   green:"#16A34A",greenLight:"#F0FDF4",
@@ -94,7 +67,14 @@ function App(){
 
   useEffect(()=>{
     if(!auth)return;
-    loadTeacherStudents(auth.profile,auth.session.access_token).then(setStudents);
+    // ดึงเฉพาะนักเรียนในห้องที่ครูดูแล
+    sbFetch(`teacher_class?teacher_id=eq.${auth.profile.id}&select=class_id`,{token:auth.session.access_token})
+      .then(async(tc)=>{
+        if(!tc||tc.length===0){setStudents([]);return;}
+        const classIds=tc.map(t=>t.class_id).join(",");
+        const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
+        setStudents(stu||[]);
+      });
   },[auth]);
 
   const loadLogs=useCallback(()=>{
@@ -137,32 +117,25 @@ function App(){
   }
 
   async function handleScan(text){
-    // QR Code format: "student:123" or a 13-digit student ID number.
-    const rawText=String(text||"").trim();
-    const cleanText=rawText.replace(/[^\d]/g,"");
+    // QR Code format: "student:123"
+    // รองรับทั้งเลข 13 หลัก และรูปแบบ student:id
     let student=null;
-    if(rawText.startsWith("student:")){
-      const studentId=parseInt(rawText.replace("student:",""),10);
-      student=students.find(s=>Number(s.id)===studentId);
+    if(text.startsWith("student:")){
+      const studentId=parseInt(text.replace("student:",""));
+      student=students.find(s=>s.id===studentId);
     }else{
-      student=students.find(s=>String(s.student_id_no||"").replace(/[^\d]/g,"")===cleanText);
-
-      if(!student&&cleanText){
-        const found=await sbFetch(`students?student_id_no=eq.${encodeURIComponent(cleanText)}&select=id,full_name,student_no,class_id,student_id_no&limit=1`,{
-          token:auth.session.access_token,
-        });
-        student=found&&found[0]?found[0]:null;
-      }
+      // ค้นหาจากเลขประจำตัว 13 หลัก
+      student=students.find(s=>s.student_id_no===text.trim());
     }
     if(!student){
-      setLastScan({success:false,message:`ไม่พบข้อมูลนักเรียน (${rawText})`});
+      setLastScan({success:false,message:`ไม่พบข้อมูลนักเรียน (${text})`});
       return;
     }
     try{
       await sbFetch("checkin_log",{
         method:"POST",
         token:auth.session.access_token,
-        body:JSON.stringify({student_id:student.id,type:scanMode,scanned_by:auth.profile.id}),
+        body:JSON.stringify({student_id:studentId,type:scanMode,scanned_by:auth.profile.id}),
       });
       setLastScan({
         success:true,
@@ -193,7 +166,7 @@ function App(){
       {/* Header */}
       <div style={{background:C.white,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",position:"sticky",top:0,zIndex:10}}>
         <div>
-          <div style={{fontSize:16,fontWeight:800,color:C.gray900}}>📷 ระบบสแกนเข้า-ออก</div>
+          <div style={{fontSize:16,fontWeight:800,color:C.gray900}}>📷 Check-in / Check-out</div>
           <div style={{fontSize:12,color:C.gray400}}>{auth.profile?.full_name}</div>
         </div>
         <a href="/" style={{background:C.gray100,borderRadius:8,padding:"6px 12px",fontSize:12,color:C.gray600,textDecoration:"none"}}>← กลับ</a>
