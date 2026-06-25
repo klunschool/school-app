@@ -1,741 +1,810 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>แอปโรงเรียน</title>
-  <meta name="description" content="โรงเรียนกลั่นวิทยาสำหรับครู นักเรียน และผู้ปกครอง" />
-  <meta name="theme-color" content="#2563EB" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="แอปโรงเรียน" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <title>โรงเรียนกลั่นวิทยา</title>
+  <meta name="theme-color" content="#1a3a6b"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="กลั่นวิทยา"/>
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Sarabun', 'Segoe UI', sans-serif; background: #F8FAFC; overscroll-behavior: none; }
-    input, textarea, select, button { font-family: 'Sarabun', 'Segoe UI', sans-serif; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    ::-webkit-scrollbar { display: none; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Sarabun','Segoe UI',sans-serif;background:#f0f4ff;overscroll-behavior:none;}
+    input,textarea,select,button{font-family:'Sarabun','Segoe UI',sans-serif;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    ::-webkit-scrollbar{display:none;}
   </style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef}=React;
 
-  <script type="text/babel">
-    const { useState, useEffect, useCallback, useRef } = React;
+const SUPABASE_URL="https://jwamejlzhvultfomtarb.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
 
-    const SUPABASE_URL = "https://jwamejlzhvultfomtarb.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
+// ลิงก์ผลสอบ (แก้ได้ที่นี่)
+const EXAM_RESULT_URL = "https://drive.google.com/";
+// ลิงก์ค่าเทอม (แก้ได้ที่นี่)  
+const TUITION_URL = "https://drive.google.com/";
 
-    async function sbFetch(path, options = {}) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${options.token || SUPABASE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-          ...options.headers,
-        },
-        ...options,
-      });
-      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.message || res.statusText); }
-      return res.status === 204 ? null : res.json();
-    }
+async function sbFetch(path,options={}){
+  const res=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${options.token||SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation",...options.headers},
+    ...options,
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
+  return res.status===204?null:res.json();
+}
+async function signIn(email,password){
+  const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{
+    method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},
+    body:JSON.stringify({email,password}),
+  });
+  const data=await res.json();
+  if(!res.ok)throw new Error(data.error_description||data.msg||"เข้าสู่ระบบไม่สำเร็จ");
+  return data;
+}
+async function signOut(token){
+  await fetch(`${SUPABASE_URL}/auth/v1/logout`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`}}).catch(()=>{});
+}
 
-    async function signIn(email, password) {
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error_description || data.msg || "เข้าสู่ระบบไม่สำเร็จ");
-      return data;
-    }
+// สีธีมน้ำเงิน-ทอง Klunwittaya
+const C={
+  navy:"#1a3a6b",navyDark:"#0f2347",navyLight:"#2a5298",
+  gold:"#c9a227",goldLight:"#f0d060",goldPale:"#fdf6dc",
+  bg:"#f0f4ff",white:"#ffffff",
+  gray50:"#f8fafc",gray100:"#f1f5f9",gray200:"#e2e8f0",
+  gray400:"#94a3b8",gray600:"#475569",gray700:"#334155",gray900:"#0f172a",
+  green:"#16a34a",greenLight:"#f0fdf4",
+  red:"#dc2626",redLight:"#fef2f2",
+  yellow:"#d97706",yellowLight:"#fffbeb",
+};
 
-    async function signOut(token) {
-      await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}` },
-      }).catch(()=>{});
-    }
+function Spinner(){return <div style={{display:"flex",justifyContent:"center",padding:32}}><div style={{width:36,height:36,border:`3px solid ${C.gray200}`,borderTopColor:C.navy,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>;}
+function EmptyState({icon,msg}){return <div style={{textAlign:"center",padding:"32px 16px",color:C.gray400}}><div style={{fontSize:40}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
 
-    const C = {
-      primary:"#2563EB", primaryLight:"#EFF6FF", primaryDark:"#1D4ED8",
-      green:"#16A34A", greenLight:"#F0FDF4",
-      red:"#DC2626", redLight:"#FEF2F2",
-      yellow:"#D97706", yellowLight:"#FFFBEB",
-      gray50:"#F8FAFC", gray100:"#F1F5F9", gray200:"#E2E8F0",
-      gray400:"#94A3B8", gray600:"#475569", gray700:"#334155", gray900:"#0F172A",
-      white:"#FFFFFF",
-    };
-    const roleColors = {
-      teacher:{ bg:"#EFF6FF", text:"#1D4ED8", label:"ครู" },
-      student:{ bg:"#F0FDF4", text:"#15803D", label:"นักเรียน" },
-      parent:{ bg:"#FFF7ED", text:"#C2410C", label:"ผู้ปกครอง" },
-    };
-
-    function Card({children,style}){ return <div style={{background:C.white,borderRadius:16,padding:"20px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)",...style}}>{children}</div>; }
-    function Badge({text,color,bg}){ return <span style={{background:bg||C.primaryLight,color:color||C.primary,borderRadius:99,padding:"2px 10px",fontSize:12,fontWeight:600}}>{text}</span>; }
-    function StatusBadge({status}){
-      const m={present:{bg:C.greenLight,color:C.green,label:"มา"},late:{bg:C.yellowLight,color:C.yellow,label:"สาย"},absent:{bg:C.redLight,color:C.red,label:"ขาด"},leave:{bg:C.gray100,color:C.gray600,label:"ลา"}};
-      const s=m[status]||m.absent;
-      return <Badge text={s.label} color={s.color} bg={s.bg}/>;
-    }
-    function Spinner(){ return <div style={{display:"flex",justifyContent:"center",padding:32}}><div style={{width:32,height:32,border:`3px solid ${C.gray200}`,borderTopColor:C.primary,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>; }
-    function EmptyState({icon,message}){ return <div style={{textAlign:"center",padding:"32px 16px",color:C.gray400}}><div style={{fontSize:36}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{message}</div></div>; }
-    function SectionTitle({children}){ return <div style={{fontSize:15,fontWeight:700,color:C.gray700,marginBottom:12}}>{children}</div>; }
-
-    // ---- LOGIN ----
-    function LoginScreen({onLogin}){
-      const [email,setEmail]=useState("");
-      const [password,setPassword]=useState("");
-      const [loading,setLoading]=useState(false);
-      const [error,setError]=useState("");
-
-      async function handleLogin(){
-        if(!email||!password){setError("กรุณากรอกอีเมลและรหัสผ่าน");return;}
-        setLoading(true);setError("");
-        try{
-          const session=await signIn(email,password);
-          const [profile]=await sbFetch(`profiles?id=eq.${session.user.id}&select=*`,{token:session.access_token});
-          // บันทึก session ไว้ใน localStorage เพื่อให้กลับมาใช้ได้โดยไม่ต้อง login ใหม่
-          localStorage.setItem("school_session",JSON.stringify({session,profile}));
-          onLogin({session,profile});
-        }catch(e){setError(e.message);}
-        finally{setLoading(false);}
-      }
-
-      const inp={width:"100%",padding:"12px 14px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:15,outline:"none",boxSizing:"border-box",color:C.gray900};
-      return(
-        <div style={{minHeight:"100vh",background:`linear-gradient(135deg,${C.primary} 0%,#7C3AED 100%)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{width:"100%",maxWidth:380,padding:"0 20px"}}>
-            <div style={{textAlign:"center",marginBottom:32}}>
-              <div style={{width:72,height:72,borderRadius:20,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 16px"}}>🏫</div>
-              <div style={{color:C.white,fontSize:24,fontWeight:800}}>โรงเรียนกลั่นวิทยา</div>
-              <div style={{color:"rgba(255,255,255,0.75)",fontSize:14,marginTop:4}}>สำหรับครู นักเรียน และผู้ปกครอง</div>
-            </div>
-            <Card>
-              <div style={{fontSize:18,fontWeight:700,color:C.gray900,marginBottom:20}}>เข้าสู่ระบบ</div>
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                <input style={inp} type="email" placeholder="อีเมล" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
-                <input style={inp} type="password" placeholder="รหัสผ่าน" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
-                {error&&<div style={{color:C.red,fontSize:13,background:C.redLight,padding:"8px 12px",borderRadius:8}}>⚠️ {error}</div>}
-                <button onClick={handleLogin} disabled={loading} style={{background:loading?C.gray400:C.primary,color:C.white,border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",marginTop:4}}>
-                  {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
-                </button>
-              </div>
-            </Card>
+// ---- LOGIN ----
+function LoginScreen({onLogin}){
+  const [email,setEmail]=useState("");
+  const [pw,setPw]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+  async function login(){
+    if(!email||!pw){setErr("กรุณากรอกอีเมลและรหัสผ่าน");return;}
+    setLoading(true);setErr("");
+    try{
+      const session=await signIn(email,pw);
+      const [profile]=await sbFetch(`profiles?id=eq.${session.user.id}&select=*`,{token:session.access_token});
+      localStorage.setItem("school_session",JSON.stringify({session,profile}));
+      onLogin({session,profile});
+    }catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  }
+  const inp={width:"100%",padding:"13px 16px",borderRadius:12,border:`2px solid rgba(255,255,255,0.3)`,fontSize:15,outline:"none",background:"rgba(255,255,255,0.15)",color:C.white,boxSizing:"border-box"};
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyDark} 0%,${C.navy} 50%,${C.navyLight} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:380}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <img src="/icon-192.png" alt="logo" style={{width:100,height:100,borderRadius:20,marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}/>
+          <div style={{color:C.gold,fontSize:22,fontWeight:800,letterSpacing:1}}>โรงเรียนกลั่นวิทยา</div>
+          <div style={{color:"rgba(255,255,255,0.7)",fontSize:14,marginTop:4}}>ระบบแอปโรงเรียน</div>
+        </div>
+        <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(10px)",borderRadius:20,padding:28,border:"1px solid rgba(255,255,255,0.2)"}}>
+          <div style={{color:C.white,fontSize:18,fontWeight:700,marginBottom:20}}>เข้าสู่ระบบ</div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <input style={inp} type="email" placeholder="อีเมล" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()}/>
+            <input style={inp} type="password" placeholder="รหัสผ่าน" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()}/>
+            {err&&<div style={{background:"rgba(220,38,38,0.2)",border:"1px solid rgba(220,38,38,0.4)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13}}>⚠️ {err}</div>}
+            <button onClick={login} disabled={loading} style={{background:loading?"rgba(255,255,255,0.2)":`linear-gradient(135deg,${C.gold},${C.goldLight})`,color:loading?C.white:C.navyDark,border:"none",borderRadius:12,padding:"14px",fontSize:16,fontWeight:800,cursor:loading?"not-allowed":"pointer",marginTop:4,boxShadow:loading?"none":"0 4px 16px rgba(201,162,39,0.4)"}}>
+              {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
+            </button>
           </div>
         </div>
-      );
-    }
+      </div>
+    </div>
+  );
+}
 
-    // ---- TEACHER HOME ----
-    function TeacherHome({token,profile}){
-      const [announcements,setAnnouncements]=useState([]);
-      const [students,setStudents]=useState([]);
-      const [loading,setLoading]=useState(true);
-      useEffect(()=>{
-        const fetchData=async()=>{
-          try{
-            const ann=await sbFetch("announcements?select=*&order=created_at.desc&limit=5",{token}).catch(()=>[]);
-            setAnnouncements(ann||[]);
-            // ดึง teacher_class ก่อน
-            const tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
-            console.log("teacher_class result:",tc);
-            if(tc&&tc.length>0){
-              const classIds=tc.map(t=>t.class_id).join(",");
-              console.log("classIds:",classIds);
-              const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
-              console.log("students result:",stu);
-              setStudents(stu||[]);
-            }else{
-              console.log("no teacher_class found, fetching all students");
-              const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
-              console.log("all students:",stu);
-              setStudents(stu||[]);
-            }
-          }catch(e){console.error("fetchData error:",e);}
-          finally{setLoading(false);}
-        };
-        fetchData();
-      },[token,profile.id]);
-      if(loading)return <Spinner/>;
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card style={{background:`linear-gradient(135deg,${C.primary},#7C3AED)`}}>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:13}}>ยินดีต้อนรับ</div>
-            <div style={{color:C.white,fontSize:20,fontWeight:800,marginTop:2}}>{profile?.full_name||"คุณครู"}</div>
-            <div style={{display:"flex",gap:16,marginTop:16}}>
-              {[{label:"นักเรียนทั้งหมด",value:students.length,icon:"👩‍🎓"},{label:"ประกาศ",value:announcements.length,icon:"📢"}].map(s=>(
-                <div key={s.label} style={{background:"rgba(255,255,255,0.15)",borderRadius:12,padding:"10px 16px",flex:1}}>
-                  <div style={{color:C.white,fontSize:22,fontWeight:800}}>{s.icon} {s.value}</div>
-                  <div style={{color:"rgba(255,255,255,0.75)",fontSize:12}}>{s.label}</div>
-                </div>
-              ))}
+// ---- MENU GRID ----
+function MenuGrid({items}){
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,padding:"4px 0"}}>
+      {items.map(item=>(
+        <button key={item.id} onClick={item.action} style={{background:C.white,border:"none",borderRadius:16,padding:"18px 8px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:"0 2px 8px rgba(26,58,107,0.1)",transition:"all 0.15s"}}>
+          <div style={{width:56,height:56,borderRadius:99,background:item.bg||`linear-gradient(135deg,${C.navy},${C.navyLight})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,boxShadow:`0 4px 12px ${item.shadow||"rgba(26,58,107,0.3)"}`}}>
+            {item.icon}
+          </div>
+          <div style={{fontSize:12,fontWeight:700,color:C.navy,textAlign:"center",lineHeight:1.3}}>{item.label}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---- ATTENDANCE HISTORY (เลือกวันได้) ----
+function AttendanceHistory({token,studentId,studentName}){
+  const [logs,setLogs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
+
+  useEffect(()=>{
+    setLoading(true);
+    const path=studentId
+      ?`checkin_log?student_id=eq.${studentId}&scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`
+      :`checkin_log?scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`;
+    sbFetch(path,{token}).then(l=>setLogs(l||[])).finally(()=>setLoading(false));
+  },[token,studentId,date]);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:10}}>📅 เลือกวันที่</div>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:15,outline:"none",color:C.gray900}}/>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>
+          {studentName?`ประวัติการสแกนของ ${studentName}`:"ประวัติการสแกนทั้งหมด"} — {new Date(date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"long"})}
+        </div>
+        {loading?<Spinner/>:logs.length===0?<EmptyState icon="📋" msg="ไม่มีข้อมูลการสแกนในวันนี้"/>:
+          logs.map((l,i)=>(
+            <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<logs.length-1?`1px solid ${C.gray100}`:"none"}}>
+              <div style={{width:40,height:40,borderRadius:99,background:l.type==="in"?C.greenLight:C.redLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                {l.type==="in"?"🟢":"🔴"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.gray900}}>{l.students?.full_name||"—"}</div>
+                <div style={{fontSize:12,color:C.gray400}}>เลขที่ {l.students?.student_no||"—"}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontWeight:700,fontSize:13,color:l.type==="in"?C.green:C.red}}>{l.type==="in"?"เข้า":"ออก"}</div>
+                <div style={{fontSize:12,color:C.gray400}}>{new Date(l.scanned_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div>
+              </div>
             </div>
-          </Card>
-          <Card>
-            <SectionTitle>📢 ประกาศล่าสุด</SectionTitle>
-            {announcements.length===0?<EmptyState icon="📭" message="ยังไม่มีประกาศ"/>:announcements.map(a=>(
-              <div key={a.id} style={{padding:"12px 0",borderBottom:`1px solid ${C.gray100}`,display:"flex",gap:10}}>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ---- LEAVE REQUEST (แจ้งลา) ----
+function LeaveRequest({token,profile,students}){
+  const [form,setForm]=useState({student_id:"",date:new Date().toISOString().split("T")[0],reason:"",type:"sick"});
+  const [saving,setSaving]=useState(false);
+  const [done,setDone]=useState(false);
+  const [myStudents,setMyStudents]=useState(students||[]);
+
+  useEffect(()=>{
+    if(profile?.role==="parent"){
+      sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id,students(id,full_name,student_no)`,{token})
+        .then(rows=>{const kids=(rows||[]).map(r=>r.students);setMyStudents(kids);})
+        .catch(()=>{});
+    }
+  },[token,profile]);
+
+  async function submit(){
+    if(!form.student_id||!form.reason){alert("กรุณากรอกข้อมูลให้ครบ");return;}
+    setSaving(true);
+    try{
+      // บันทึกเป็น attendance ประเภท leave
+      await sbFetch("attendance",{
+        method:"POST",token,
+        headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+        body:JSON.stringify({student_id:parseInt(form.student_id),date:form.date,status:"leave"}),
+      });
+      setDone(true);
+      setTimeout(()=>{setDone(false);setForm({student_id:"",date:new Date().toISOString().split("T")[0],reason:"",type:"sick"});},3000);
+    }catch(e){alert("แจ้งลาไม่สำเร็จ: "+e.message);}
+    finally{setSaving(false);}
+  }
+
+  const sel={width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,color:C.gray900,background:C.white,outline:"none"};
+
+  if(done)return(
+    <div style={{background:C.white,borderRadius:16,padding:32,textAlign:"center",boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+      <div style={{fontSize:56}}>✅</div>
+      <div style={{fontSize:18,fontWeight:700,color:C.green,marginTop:12}}>แจ้งลาสำเร็จแล้ว!</div>
+      <div style={{fontSize:14,color:C.gray600,marginTop:4}}>ระบบบันทึกการลาเรียบร้อย</div>
+    </div>
+  );
+
+  return(
+    <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+      <div style={{fontSize:16,fontWeight:700,color:C.navy,marginBottom:16}}>📝 แจ้งลาเรียน</div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <select style={sel} value={form.student_id} onChange={e=>setForm(p=>({...p,student_id:e.target.value}))}>
+          <option value="">เลือกนักเรียน</option>
+          {myStudents.map(s=><option key={s.id} value={s.id}>{s.full_name} (เลขที่ {s.student_no})</option>)}
+        </select>
+        <select style={sel} value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}>
+          <option value="sick">ลาป่วย</option>
+          <option value="personal">ลากิจ</option>
+          <option value="other">อื่นๆ</option>
+        </select>
+        <div style={{fontSize:13,fontWeight:600,color:C.gray700}}>วันที่ลา</div>
+        <input type="date" style={{...sel}} value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+        <textarea
+          style={{...sel,minHeight:80,resize:"vertical",fontFamily:"inherit"}}
+          placeholder="เหตุผลการลา *"
+          value={form.reason}
+          onChange={e=>setForm(p=>({...p,reason:e.target.value}))}
+        />
+        <button onClick={submit} disabled={saving} style={{background:saving?C.gray400:`linear-gradient(135deg,${C.navy},${C.navyLight})`,color:C.white,border:"none",borderRadius:12,padding:"13px",fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+          {saving?"กำลังส่ง...":"📤 ส่งใบลา"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- TEACHER HOME ----
+function TeacherHome({token,profile,setPage}){
+  const [students,setStudents]=useState([]);
+  const [announcements,setAnnouncements]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const load=async()=>{
+      try{
+        const ann=await sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]);
+        setAnnouncements(ann||[]);
+        const tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
+        if(tc&&tc.length>0){
+          const ids=tc.map(t=>t.class_id).join(",");
+          const stu=await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
+          setStudents(stu||[]);
+        }else{
+          const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
+          setStudents(stu||[]);
+        }
+      }catch(e){console.error(e);}
+      finally{setLoading(false);}
+    };
+    load();
+  },[token,profile.id]);
+
+  const menus=[
+    {id:"scan",icon:"📷",label:"สแกนเข้า-ออก",bg:`linear-gradient(135deg,#1a3a6b,#2a5298)`,shadow:"rgba(26,58,107,0.4)",action:()=>window.open("/scanner.html","_self")},
+    {id:"checkin_hist",icon:"📅",label:"ประวัติสแกน",bg:`linear-gradient(135deg,#0f766e,#0d9488)`,shadow:"rgba(15,118,110,0.4)",action:()=>setPage("checkin_history")},
+    {id:"attendance",icon:"✅",label:"เช็คชื่อ",bg:`linear-gradient(135deg,#16a34a,#22c55e)`,shadow:"rgba(22,163,74,0.4)",action:()=>setPage("attendance")},
+    {id:"grades",icon:"📊",label:"คะแนน",bg:`linear-gradient(135deg,#7c3aed,#8b5cf6)`,shadow:"rgba(124,58,237,0.4)",action:()=>setPage("grades")},
+    {id:"announce",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldLight})`,shadow:"rgba(201,162,39,0.4)",action:()=>setPage("announcements")},
+    {id:"leave",icon:"📝",label:"รับใบลา",bg:`linear-gradient(135deg,#ea580c,#f97316)`,shadow:"rgba(234,88,12,0.4)",action:()=>setPage("leave")},
+    {id:"exam",icon:"📋",label:"ผลสอบ",bg:`linear-gradient(135deg,#0369a1,#0ea5e9)`,shadow:"rgba(3,105,161,0.4)",action:()=>window.open(EXAM_RESULT_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:`linear-gradient(135deg,#b45309,#d97706)`,shadow:"rgba(180,83,9,0.4)",action:()=>window.open(TUITION_URL,"_blank")},
+    {id:"messages",icon:"💬",label:"ข้อความ",bg:`linear-gradient(135deg,#0891b2,#06b6d4)`,shadow:"rgba(8,145,178,0.4)",action:()=>setPage("messages")},
+    {id:"import",icon:"📥",label:"นำเข้านักเรียน",bg:`linear-gradient(135deg,#475569,#64748b)`,shadow:"rgba(71,85,105,0.4)",action:()=>window.open("/import.html","_self")},
+  ];
+
+  if(loading)return <Spinner/>;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Hero card */}
+      <div style={{background:`linear-gradient(135deg,${C.navyDark},${C.navy})`,borderRadius:20,padding:20,color:C.white,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",right:-20,top:-20,width:120,height:120,borderRadius:99,background:"rgba(201,162,39,0.15)"}}/>
+        <div style={{position:"absolute",right:20,bottom:-30,width:80,height:80,borderRadius:99,background:"rgba(201,162,39,0.1)"}}/>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>ยินดีต้อนรับ</div>
+        <div style={{fontSize:20,fontWeight:800,marginTop:2,color:C.gold}}>{profile?.full_name}</div>
+        <div style={{display:"flex",gap:12,marginTop:14}}>
+          {[{v:students.length,l:"นักเรียน",i:"👩‍🎓"},{v:announcements.length,l:"ประกาศ",i:"📢"}].map(s=>(
+            <div key={s.l} style={{background:"rgba(255,255,255,0.1)",borderRadius:12,padding:"8px 14px",flex:1}}>
+              <div style={{fontSize:20,fontWeight:800}}>{s.i} {s.v}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Menu grid */}
+      <div style={{background:C.white,borderRadius:20,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>เมนูหลัก</div>
+        <MenuGrid items={menus}/>
+      </div>
+      {/* ประกาศล่าสุด */}
+      {announcements.length>0&&(
+        <div style={{background:C.white,borderRadius:20,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>📢 ประกาศล่าสุด</div>
+          {announcements.map((a,i)=>(
+            <div key={a.id} style={{padding:"10px 0",borderBottom:i<announcements.length-1?`1px solid ${C.gray100}`:"none"}}>
+              <div style={{display:"flex",gap:8}}>
                 {a.pinned&&<span>📌</span>}
                 <div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{a.title}</div>
+                  <div style={{fontWeight:700,fontSize:14,color:C.gray900}}>{a.title}</div>
                   {a.body&&<div style={{fontSize:13,color:C.gray600,marginTop:2}}>{a.body}</div>}
-                  {a.tag&&<Badge text={a.tag}/>}
                 </div>
               </div>
-            ))}
-          </Card>
-          <Card>
-            <a href="/import.html" style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.primaryLight,borderRadius:12,padding:"12px 16px",textDecoration:"none",marginBottom:12}}><div style={{fontWeight:700,fontSize:14,color:C.primary}}>📥 นำเข้านักเรียนจาก Excel</div><div style={{color:C.primary}}>→</div></a><SectionTitle>👩‍🎓 นักเรียนทั้งหมด ({students.length} คน)</SectionTitle>
-            {students.length===0?<EmptyState icon="🏫" message="ยังไม่มีข้อมูลนักเรียน"/>:students.map((s,i)=>(
-              <div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<students.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div style={{width:36,height:36,borderRadius:99,background:C.primaryLight,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14}}>{s.student_no||i+1}</div>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{s.full_name}</div>
-                  <div style={{fontSize:12,color:C.gray400}}>{s.classes?.name||"—"}</div>
-                </div>
-              </div>
-            ))}
-          </Card>
-        </div>
-      );
-    }
-
-    // ---- TEACHER ATTENDANCE ----
-    function TeacherAttendance({token,profile}){
-      const [students,setStudents]=useState([]);
-      const [attendance,setAttendance]=useState({});
-      const [loading,setLoading]=useState(true);
-      const [saving,setSaving]=useState(false);
-      const [saved,setSaved]=useState(false);
-      const today=new Date().toISOString().split("T")[0];
-      useEffect(()=>{
-        const fetchData=async()=>{
-          try{
-            let tc=[];
-            try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
-            const att=await sbFetch(`attendance?date=eq.${today}&select=*`,{token}).catch(()=>[]);
-            if(tc&&tc.length>0){
-              const classIds=tc.map(t=>t.class_id).join(",");
-              const stu=await sbFetch(`students?class_id=in.(${classIds})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
-              setStudents(stu||[]);
-            }else{
-              const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
-              setStudents(stu||[]);
-            }
-            const map={};(att||[]).forEach(a=>{map[a.student_id]=a.status;});
-            setAttendance(map);
-          }catch(e){console.error(e);}
-          finally{setLoading(false);}
-        };
-        fetchData();
-      },[token,today,profile.id]);
-
-      async function saveAttendance(){
-        setSaving(true);
-        try{
-          for(const [sid,status] of Object.entries(attendance)){
-            await sbFetch("attendance",{method:"POST",token,headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({student_id:parseInt(sid),date:today,status})});
-          }
-          setSaved(true);setTimeout(()=>setSaved(false),2500);
-        }catch(e){alert("บันทึกไม่สำเร็จ: "+e.message);}
-        finally{setSaving(false);}
-      }
-
-      if(loading)return <Spinner/>;
-      const statusOptions=[
-        {value:"present",label:"มา",color:C.green,bg:C.greenLight},
-        {value:"late",label:"สาย",color:C.yellow,bg:C.yellowLight},
-        {value:"absent",label:"ขาด",color:C.red,bg:C.redLight},
-        {value:"leave",label:"ลา",color:C.gray600,bg:C.gray100},
-      ];
-      const summary={present:0,late:0,absent:0,leave:0};
-      Object.values(attendance).forEach(s=>{if(summary[s]!==undefined)summary[s]++;});
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card>
-            <SectionTitle>📅 เช็คชื่อ — {new Date(today+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"long"})}</SectionTitle>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {statusOptions.map(s=><div key={s.value} style={{background:s.bg,color:s.color,borderRadius:8,padding:"6px 12px",fontSize:13,fontWeight:600}}>{s.label} {summary[s.value]}</div>)}
             </div>
-          </Card>
-          <Card>
-            {students.length===0?<EmptyState icon="🏫" message="ยังไม่มีนักเรียน"/>:students.map((s,i)=>(
-              <div key={s.id} style={{padding:"12px 0",borderBottom:i<students.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <div style={{width:32,height:32,borderRadius:99,background:C.primaryLight,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13}}>{s.student_no||i+1}</div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{s.full_name}</div>
-                </div>
-                <div style={{display:"flex",gap:6}}>
-                  {statusOptions.map(opt=>(
-                    <button key={opt.value} onClick={()=>setAttendance(p=>({...p,[s.id]:opt.value}))} style={{border:"none",borderRadius:8,padding:"6px 12px",fontSize:13,fontWeight:600,cursor:"pointer",background:attendance[s.id]===opt.value?opt.bg:C.gray100,color:attendance[s.id]===opt.value?opt.color:C.gray600,outline:attendance[s.id]===opt.value?`2px solid ${opt.color}`:"none"}}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {students.length>0&&(
-              <button onClick={saveAttendance} disabled={saving} style={{width:"100%",marginTop:16,padding:"12px",background:saved?C.green:saving?C.gray400:C.primary,color:C.white,border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer",transition:"background 0.2s"}}>
-                {saved?"✅ บันทึกสำเร็จ!":saving?"กำลังบันทึก...":"💾 บันทึกการเช็คชื่อ"}
-              </button>
-            )}
-          </Card>
+          ))}
         </div>
-      );
-    }
+      )}
+    </div>
+  );
+}
 
-    // ---- TEACHER GRADES ----
-    function TeacherGrades({token}){
-      const [grades,setGrades]=useState([]);
-      const [students,setStudents]=useState([]);
-      const [loading,setLoading]=useState(true);
-      const [form,setForm]=useState({student_id:"",subject:"",score:"",term:"เทอม 1"});
-      const [saving,setSaving]=useState(false);
-      const load=useCallback(()=>{
-        Promise.all([
-          sbFetch("grades?select=*,students(full_name)&order=created_at.desc",{token}),
-          sbFetch("students?select=id,full_name&order=full_name.asc",{token}),
-        ]).then(([g,s])=>{setGrades(g||[]);setStudents(s||[]);}).finally(()=>setLoading(false));
-      },[token]);
-      useEffect(()=>{load();},[load]);
-      async function addGrade(){
-        if(!form.student_id||!form.subject||form.score==="")return;
-        setSaving(true);
-        try{
-          await sbFetch("grades",{method:"POST",token,body:JSON.stringify({...form,student_id:parseInt(form.student_id),score:parseFloat(form.score)})});
-          setForm({student_id:"",subject:"",score:"",term:"เทอม 1"});load();
-        }catch(e){alert(e.message);}finally{setSaving(false);}
+// ---- TEACHER ATTENDANCE ----
+function TeacherAttendance({token,profile}){
+  const [students,setStudents]=useState([]);
+  const [attendance,setAttendance]=useState({});
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const today=new Date().toISOString().split("T")[0];
+
+  useEffect(()=>{
+    const load=async()=>{
+      try{
+        let tc=[];try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
+        const att=await sbFetch(`attendance?date=eq.${today}&select=*`,{token}).catch(()=>[]);
+        if(tc&&tc.length>0){
+          const ids=tc.map(t=>t.class_id).join(",");
+          const stu=await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]);
+          setStudents(stu||[]);
+        }else{
+          const stu=await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
+          setStudents(stu||[]);
+        }
+        const map={};(att||[]).forEach(a=>{map[a.student_id]=a.status;});
+        setAttendance(map);
+      }catch(e){console.error(e);}
+      finally{setLoading(false);}
+    };
+    load();
+  },[token,profile.id,today]);
+
+  async function save(){
+    setSaving(true);
+    try{
+      for(const [sid,status] of Object.entries(attendance)){
+        await sbFetch("attendance",{method:"POST",token,headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({student_id:parseInt(sid),date:today,status})});
       }
-      if(loading)return <Spinner/>;
-      const sel={padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,color:C.gray900,background:C.white,width:"100%"};
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card>
-            <SectionTitle>➕ เพิ่มคะแนน</SectionTitle>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <select style={sel} value={form.student_id} onChange={e=>setForm(p=>({...p,student_id:e.target.value}))}>
-                <option value="">เลือกนักเรียน</option>
-                {students.map(s=><option key={s.id} value={s.id}>{s.full_name}</option>)}
-              </select>
-              <input style={{...sel,outline:"none"}} placeholder="วิชา เช่น คณิตศาสตร์" value={form.subject} onChange={e=>setForm(p=>({...p,subject:e.target.value}))}/>
-              <div style={{display:"flex",gap:8}}>
-                <input style={{...sel,outline:"none",flex:1}} type="number" placeholder="คะแนน 0-100" value={form.score} onChange={e=>setForm(p=>({...p,score:e.target.value}))}/>
-                <select style={{...sel,flex:1}} value={form.term} onChange={e=>setForm(p=>({...p,term:e.target.value}))}>
-                  <option>เทอม 1</option><option>เทอม 2</option>
-                </select>
-              </div>
-              <button onClick={addGrade} disabled={saving} style={{background:saving?C.gray400:C.primary,color:C.white,border:"none",borderRadius:10,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                {saving?"กำลังบันทึก...":"บันทึกคะแนน"}
-              </button>
+      setSaved(true);setTimeout(()=>setSaved(false),2500);
+    }catch(e){alert(e.message);}
+    finally{setSaving(false);}
+  }
+
+  if(loading)return <Spinner/>;
+  const opts=[{v:"present",l:"มา",c:C.green,bg:C.greenLight},{v:"late",l:"สาย",c:C.yellow,bg:C.yellowLight},{v:"absent",l:"ขาด",c:C.red,bg:C.redLight},{v:"leave",l:"ลา",c:C.gray600,bg:C.gray100}];
+  const sum={present:0,late:0,absent:0,leave:0};Object.values(attendance).forEach(s=>{if(sum[s]!==undefined)sum[s]++;});
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:10}}>📅 {new Date(today+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"long"})}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {opts.map(o=><div key={o.v} style={{background:o.bg,color:o.c,borderRadius:8,padding:"5px 12px",fontSize:13,fontWeight:700}}>{o.l} {sum[o.v]}</div>)}
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        {students.length===0?<EmptyState icon="🏫" msg="ยังไม่มีนักเรียน"/>:students.map((s,i)=>(
+          <div key={s.id} style={{padding:"12px 0",borderBottom:i<students.length-1?`1px solid ${C.gray100}`:"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <div style={{width:32,height:32,borderRadius:99,background:C.goldPale,color:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,border:`1.5px solid ${C.gold}`}}>{s.student_no||i+1}</div>
+              <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{s.full_name}</div>
+              <div style={{fontSize:12,color:C.gray400,marginLeft:"auto"}}>{s.classes?.name}</div>
             </div>
-          </Card>
-          <Card>
-            <SectionTitle>📊 คะแนนทั้งหมด</SectionTitle>
-            {grades.length===0?<EmptyState icon="📝" message="ยังไม่มีข้อมูลคะแนน"/>:grades.map((g,i)=>(
-              <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<grades.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{g.students?.full_name}</div>
-                  <div style={{fontSize:12,color:C.gray400}}>{g.subject} · {g.term}</div>
-                </div>
-                <div style={{fontWeight:800,fontSize:18,color:g.score>=80?C.green:g.score>=50?C.yellow:C.red}}>{g.score}</div>
-              </div>
-            ))}
-          </Card>
-        </div>
-      );
-    }
-
-    // ---- ANNOUNCEMENTS ----
-    function AnnouncementsView({token,profile}){
-      const [announcements,setAnnouncements]=useState([]);
-      const [loading,setLoading]=useState(true);
-      const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});
-      const [saving,setSaving]=useState(false);
-      const load=useCallback(()=>{
-        sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setAnnouncements(a||[])).finally(()=>setLoading(false));
-      },[token]);
-      useEffect(()=>{load();},[load]);
-      async function addAnnouncement(){
-        if(!form.title)return;setSaving(true);
-        try{
-          await sbFetch("announcements",{method:"POST",token,body:JSON.stringify({...form,created_by:profile.id})});
-          setForm({title:"",body:"",tag:"",pinned:false});load();
-        }catch(e){alert(e.message);}finally{setSaving(false);}
-      }
-      const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,outline:"none",boxSizing:"border-box"};
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {profile?.role==="teacher"&&(
-            <Card>
-              <SectionTitle>➕ สร้างประกาศใหม่</SectionTitle>
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <input style={inp} placeholder="หัวข้อประกาศ *" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
-                <textarea style={{...inp,minHeight:80,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด (ถ้ามี)" value={form.body} onChange={e=>setForm(p=>({...p,body:e.target.value}))}/>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <input style={{...inp,flex:1}} placeholder="ป้ายกำกับ เช่น กิจกรรม" value={form.tag} onChange={e=>setForm(p=>({...p,tag:e.target.value}))}/>
-                  <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.gray700,whiteSpace:"nowrap",cursor:"pointer"}}>
-                    <input type="checkbox" checked={form.pinned} onChange={e=>setForm(p=>({...p,pinned:e.target.checked}))}/> ปักหมุด
-                  </label>
-                </div>
-                <button onClick={addAnnouncement} disabled={saving||!form.title} style={{background:saving||!form.title?C.gray400:C.primary,color:C.white,border:"none",borderRadius:10,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                  {saving?"กำลังบันทึก...":"📢 เผยแพร่ประกาศ"}
+            <div style={{display:"flex",gap:6}}>
+              {opts.map(o=>(
+                <button key={o.v} onClick={()=>setAttendance(p=>({...p,[s.id]:o.v}))} style={{border:"none",borderRadius:8,padding:"6px 12px",fontSize:13,fontWeight:600,cursor:"pointer",background:attendance[s.id]===o.v?o.bg:C.gray100,color:attendance[s.id]===o.v?o.c:C.gray600,outline:attendance[s.id]===o.v?`2px solid ${o.c}`:"none"}}>
+                  {o.l}
                 </button>
-              </div>
-            </Card>
-          )}
-          <Card>
-            <SectionTitle>ประกาศทั้งหมด</SectionTitle>
-            {loading?<Spinner/>:announcements.length===0?<EmptyState icon="📭" message="ยังไม่มีประกาศ"/>:announcements.map((a,i)=>(
-              <div key={a.id} style={{padding:"14px 0",borderBottom:i<announcements.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div style={{display:"flex",gap:8}}>
-                  {a.pinned&&<span style={{flexShrink:0}}>📌</span>}
-                  <div>
-                    <div style={{fontWeight:700,fontSize:15,color:C.gray900}}>{a.title}</div>
-                    {a.body&&<div style={{fontSize:13,color:C.gray600,marginTop:4}}>{a.body}</div>}
-                    <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
-                      {a.tag&&<Badge text={a.tag}/>}
-                      <Badge text={new Date(a.created_at).toLocaleDateString("th-TH",{dateStyle:"short"})} color={C.gray400} bg={C.gray100}/>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Card>
-        </div>
-      );
-    }
-
-    // ---- MESSAGES ----
-    function MessagesView({token,profile}){
-      const [messages,setMessages]=useState([]);
-      const [users,setUsers]=useState([]);
-      const [selected,setSelected]=useState(null);
-      const [body,setBody]=useState("");
-      const [loading,setLoading]=useState(true);
-      const [sending,setSending]=useState(false);
-      const load=useCallback(async()=>{
-        const [msgs,profs]=await Promise.all([
-          sbFetch(`messages?or=(sender_id.eq.${profile.id},receiver_id.eq.${profile.id})&select=*&order=created_at.desc`,{token}),
-          sbFetch("profiles?select=id,full_name,role",{token}),
-        ]);
-        setMessages(msgs||[]);
-        setUsers((profs||[]).filter(p=>p.id!==profile.id));
-        setLoading(false);
-      },[token,profile]);
-      useEffect(()=>{load();},[load]);
-      async function send(){
-        if(!body.trim()||!selected)return;setSending(true);
-        try{
-          await sbFetch("messages",{method:"POST",token,body:JSON.stringify({sender_id:profile.id,receiver_id:selected,body})});
-          setBody("");load();
-        }catch(e){alert(e.message);}finally{setSending(false);}
-      }
-      if(loading)return <Spinner/>;
-      const conversation=selected?messages.filter(m=>(m.sender_id===profile.id&&m.receiver_id===selected)||(m.sender_id===selected&&m.receiver_id===profile.id)):[];
-      const selectedUser=users.find(u=>u.id===selected);
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card>
-            <SectionTitle>💬 ส่งข้อความ</SectionTitle>
-            <select value={selected||""} onChange={e=>setSelected(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,color:C.gray900,marginBottom:10}}>
-              <option value="">เลือกผู้รับ</option>
-              {users.map(u=><option key={u.id} value={u.id}>{u.full_name} ({roleColors[u.role]?.label})</option>)}
-            </select>
-            <div style={{display:"flex",gap:8}}>
-              <input style={{flex:1,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,outline:"none"}} placeholder="พิมพ์ข้อความ..." value={body} onChange={e=>setBody(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
-              <button onClick={send} disabled={sending||!selected||!body.trim()} style={{background:sending||!selected||!body.trim()?C.gray400:C.primary,color:C.white,border:"none",borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer"}}>ส่ง</button>
-            </div>
-          </Card>
-          {selectedUser&&(
-            <Card>
-              <SectionTitle>บทสนทนากับ {selectedUser.full_name}</SectionTitle>
-              {conversation.length===0?<EmptyState icon="💬" message="ยังไม่มีข้อความ"/>:conversation.map(m=>{
-                const isMe=m.sender_id===profile.id;
-                return(
-                  <div key={m.id} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",marginBottom:10}}>
-                    <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isMe?C.primary:C.gray100,color:isMe?C.white:C.gray900,fontSize:14}}>
-                      <div>{m.body}</div>
-                      <div style={{fontSize:11,marginTop:4,opacity:0.7,textAlign:isMe?"right":"left"}}>{new Date(m.created_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-          )}
-          {messages.length>0&&(
-            <Card>
-              <SectionTitle>ข้อความล่าสุด</SectionTitle>
-              {messages.slice(0,10).map((m,i)=>{
-                const other=users.find(u=>u.id===(m.sender_id===profile.id?m.receiver_id:m.sender_id));
-                const isMe=m.sender_id===profile.id;
-                return(
-                  <div key={m.id} style={{padding:"10px 0",borderBottom:i<Math.min(messages.length-1,9)?`1px solid ${C.gray100}`:"none",cursor:"pointer"}} onClick={()=>setSelected(isMe?m.receiver_id:m.sender_id)}>
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{isMe?"ฉัน → ":""}{other?.full_name||"—"}</div>
-                      <div style={{fontSize:11,color:C.gray400}}>{new Date(m.created_at).toLocaleDateString("th-TH",{dateStyle:"short"})}</div>
-                    </div>
-                    <div style={{fontSize:13,color:C.gray600,marginTop:2}}>{m.body}</div>
-                  </div>
-                );
-              })}
-            </Card>
-          )}
-        </div>
-      );
-    }
-
-    // ---- STUDENT VIEW ----
-    function StudentView({token,profile,studentId}){
-      const [data,setData]=useState({attendance:[],grades:[],announcements:[]});
-      const [loading,setLoading]=useState(true);
-      const [studentInfo,setStudentInfo]=useState(null);
-      useEffect(()=>{
-        const fetchAll=async()=>{
-          let sid=studentId;
-          if(!sid){
-            const students=await sbFetch(`students?profile_id=eq.${profile.id}&select=*`,{token});
-            if(students?.[0]){setStudentInfo(students[0]);sid=students[0].id;}
-          }
-          if(!sid){setLoading(false);return;}
-          const [att,grd,ann]=await Promise.all([
-            sbFetch(`attendance?student_id=eq.${sid}&select=*&order=date.desc&limit=10`,{token}),
-            sbFetch(`grades?student_id=eq.${sid}&select=*&order=created_at.desc`,{token}),
-            sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=5",{token}),
-          ]);
-          setData({attendance:att||[],grades:grd||[],announcements:ann||[]});
-          setLoading(false);
-        };
-        fetchAll();
-      },[token,profile,studentId]);
-      if(loading)return <Spinner/>;
-      const attSum={present:0,late:0,absent:0,leave:0};
-      data.attendance.forEach(a=>{if(attSum[a.status]!==undefined)attSum[a.status]++;});
-      const total=data.attendance.length;
-      const pct=total>0?Math.round((attSum.present/total)*100):0;
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card style={{background:`linear-gradient(135deg,#16A34A,#059669)`}}>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:13}}>ยินดีต้อนรับ</div>
-            <div style={{color:C.white,fontSize:20,fontWeight:800,marginTop:2}}>{profile?.full_name||studentInfo?.full_name||"—"}</div>
-            <div style={{color:"rgba(255,255,255,0.75)",fontSize:13,marginTop:4}}>{roleColors[profile?.role]?.label} · เลขที่ {studentInfo?.student_no||"—"}</div>
-          </Card>
-          <Card>
-            <SectionTitle>📅 สรุปการมาเรียน</SectionTitle>
-            <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:12}}>
-              <div style={{width:72,height:72,borderRadius:99,background:pct>=80?C.greenLight:C.yellowLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:pct>=80?C.green:C.yellow,flexShrink:0}}>{pct}%</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {Object.entries(attSum).map(([k,v])=>{
-                  const lb={present:"มา",late:"สาย",absent:"ขาด",leave:"ลา"};
-                  const bg={present:C.greenLight,late:C.yellowLight,absent:C.redLight,leave:C.gray100};
-                  const tx={present:C.green,late:C.yellow,absent:C.red,leave:C.gray600};
-                  return <div key={k} style={{background:bg[k],color:tx[k],borderRadius:8,padding:"4px 10px",fontSize:13,fontWeight:600}}>{lb[k]} {v}</div>;
-                })}
-              </div>
-            </div>
-            {data.attendance.slice(0,5).map((a,i)=>(
-              <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<4?`1px solid ${C.gray100}`:"none"}}>
-                <div style={{fontSize:14,color:C.gray700}}>{new Date(a.date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"short"})}</div>
-                <StatusBadge status={a.status}/>
-              </div>
-            ))}
-            {data.attendance.length===0&&<EmptyState icon="📅" message="ยังไม่มีข้อมูลการมาเรียน"/>}
-          </Card>
-          <Card>
-            <SectionTitle>📊 ผลการเรียน</SectionTitle>
-            {data.grades.length===0?<EmptyState icon="📝" message="ยังไม่มีข้อมูลคะแนน"/>:data.grades.map((g,i)=>(
-              <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<data.grades.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{g.subject}</div>
-                  <div style={{fontSize:12,color:C.gray400}}>{g.term}</div>
-                </div>
-                <div style={{fontWeight:800,fontSize:20,color:g.score>=80?C.green:g.score>=50?C.yellow:C.red}}>{g.score}</div>
-              </div>
-            ))}
-          </Card>
-          <Card>
-            <SectionTitle>📢 ประกาศโรงเรียน</SectionTitle>
-            {data.announcements.length===0?<EmptyState icon="📭" message="ยังไม่มีประกาศ"/>:data.announcements.map((a,i)=>(
-              <div key={a.id} style={{padding:"12px 0",borderBottom:i<data.announcements.length-1?`1px solid ${C.gray100}`:"none"}}>
-                <div style={{display:"flex",gap:8}}>
-                  {a.pinned&&<span>📌</span>}
-                  <div>
-                    <div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{a.title}</div>
-                    {a.body&&<div style={{fontSize:13,color:C.gray600,marginTop:2}}>{a.body}</div>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Card>
-        </div>
-      );
-    }
-
-    // ---- PARENT VIEW ----
-    function ParentView({token,profile}){
-      const [children,setChildren]=useState([]);
-      const [selectedChild,setSelectedChild]=useState(null);
-      const [loading,setLoading]=useState(true);
-      useEffect(()=>{
-        sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id,students(id,full_name,student_no,classes(name))`,{token})
-          .then(rows=>{
-            const kids=(rows||[]).map(r=>r.students);
-            setChildren(kids);
-            if(kids.length===1)setSelectedChild(kids[0]);
-          }).finally(()=>setLoading(false));
-      },[token,profile]);
-      if(loading)return <Spinner/>;
-      if(!selectedChild)return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card style={{background:`linear-gradient(135deg,#EA580C,#DC2626)`}}>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:13}}>ยินดีต้อนรับ</div>
-            <div style={{color:C.white,fontSize:20,fontWeight:800,marginTop:2}}>{profile?.full_name||"ผู้ปกครอง"}</div>
-          </Card>
-          <Card>
-            <SectionTitle>👶 เลือกบุตรหลาน</SectionTitle>
-            {children.length===0?<EmptyState icon="👪" message="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(child=>(
-              <button key={child.id} onClick={()=>setSelectedChild(child)} style={{width:"100%",textAlign:"left",background:C.gray50,border:"none",borderRadius:10,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:42,height:42,borderRadius:99,background:"#FFF7ED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👧</div>
-                <div>
-                  <div style={{fontWeight:600,fontSize:15,color:C.gray900}}>{child.full_name}</div>
-                  <div style={{fontSize:13,color:C.gray400}}>{child.classes?.name||"—"} · เลขที่ {child.student_no||"—"}</div>
-                </div>
-                <div style={{marginLeft:"auto",color:C.gray400}}>›</div>
-              </button>
-            ))}
-          </Card>
-        </div>
-      );
-      return(
-        <div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-            <button onClick={()=>setSelectedChild(null)} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:14}}>← กลับ</button>
-            <div style={{fontWeight:700,fontSize:15,color:C.gray900}}>{selectedChild.full_name}</div>
-          </div>
-          <StudentView token={token} profile={profile} studentId={selectedChild.id}/>
-        </div>
-      );
-    }
-
-    function ScannerLink(){
-      return(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div style={{background:"linear-gradient(135deg,#2563EB,#7C3AED)",borderRadius:16,padding:24,textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
-            <div style={{fontSize:56}}>📷</div>
-            <div style={{color:"#fff",fontSize:20,fontWeight:800,marginTop:8}}>ระบบสแกนเข้า-ออก</div>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:14,marginTop:4}}>สแกน QR Code บัตรนักเรียน</div>
-            <a href="/scanner.html" style={{display:"block",marginTop:16,background:"rgba(255,255,255,0.2)",color:"#fff",borderRadius:12,padding:"14px",textDecoration:"none",fontSize:16,fontWeight:700}}>เปิดหน้าสแกน →</a>
-          </div>
-          <div style={{background:"#fff",borderRadius:16,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
-            <div style={{fontSize:14,fontWeight:700,color:"#334155",marginBottom:12}}>วิธีใช้งาน</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {[{n:"1",t:"เปิดหน้าสแกน",d:"กดปุ่มด้านบน"},
-                {n:"2",t:"เลือกโหมด",d:"เข้าเรียน หรือ ออก"},
-                {n:"3",t:"สแกน QR",d:"จ่อกล้องที่ QR บัตรนักเรียน"},
-                {n:"4",t:"บันทึกอัตโนมัติ",d:"ระบบบันทึกเวลาทันที"}].map(s=>(
-                <div key={s.n} style={{display:"flex",gap:12,alignItems:"center"}}>
-                  <div style={{width:28,height:28,borderRadius:99,background:"#EFF6FF",color:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>{s.n}</div>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:14,color:"#0F172A"}}>{s.t}</div>
-                    <div style={{fontSize:12,color:"#94A3B8"}}>{s.d}</div>
-                  </div>
-                </div>
               ))}
             </div>
           </div>
-        </div>
-      );
-    }
+        ))}
+        {students.length>0&&(
+          <button onClick={save} disabled={saving} style={{width:"100%",marginTop:16,padding:"13px",background:saved?C.green:saving?C.gray400:`linear-gradient(135deg,${C.navy},${C.navyLight})`,color:C.white,border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+            {saved?"✅ บันทึกสำเร็จ!":saving?"กำลังบันทึก...":"💾 บันทึกการเช็คชื่อ"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
-    // ---- MAIN APP ----
-    function App(){
-      const [auth,setAuth]=useState(()=>{
-        try{ const s=localStorage.getItem("school_session"); return s?JSON.parse(s):null; }
-        catch(e){ return null; }
-      });
-      const [tab,setTab]=useState("home");
-
-      function handleLogin(data){setAuth(data);setTab("home");}
-      function handleLogout(){
-        signOut(auth?.session?.access_token);
-        localStorage.removeItem("school_session");
-        setAuth(null);
-      }
-
-      if(!auth)return <LoginScreen onLogin={handleLogin}/>;
-
-      const {session,profile}=auth;
-      const token=session?.access_token;
-      const role=profile?.role;
-      const tabs=role==="teacher"
-        ?[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"scanner",icon:"📷",label:"สแกน"},{id:"attendance",icon:"📅",label:"เช็คชื่อ"},{id:"grades",icon:"📊",label:"คะแนน"},{id:"announcements",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"}]
-        :[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"announcements",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"}];
-
-      function renderContent(){
-        if(role==="teacher"){
-          if(tab==="home")return <TeacherHome token={token} profile={profile}/>;
-          if(tab==="scanner")return <ScannerLink/>;if(tab==="attendance")return <TeacherAttendance token={token} profile={profile}/>;
-          if(tab==="grades")return <TeacherGrades token={token}/>;
-          if(tab==="announcements")return <AnnouncementsView token={token} profile={profile}/>;
-          if(tab==="messages")return <MessagesView token={token} profile={profile}/>;
-        }
-        if(role==="student"){
-          if(tab==="home")return <StudentView token={token} profile={profile}/>;
-          if(tab==="announcements")return <AnnouncementsView token={token} profile={profile}/>;
-          if(tab==="messages")return <MessagesView token={token} profile={profile}/>;
-        }
-        if(role==="parent"){
-          if(tab==="home")return <ParentView token={token} profile={profile}/>;
-          if(tab==="announcements")return <AnnouncementsView token={token} profile={profile}/>;
-          if(tab==="messages")return <MessagesView token={token} profile={profile}/>;
-        }
-        return null;
-      }
-
-      const rc=roleColors[role]||roleColors.student;
-      return(
-        <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.gray50,paddingBottom:80,position:"relative"}}>
-          <div style={{background:C.white,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",position:"sticky",top:0,zIndex:10}}>
-            <div>
-              <div style={{fontSize:16,fontWeight:800,color:C.gray900}}>🏫 กลั่นวิทยา</div>
-              <div style={{fontSize:12,color:C.gray400}}>{profile?.full_name}</div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <Badge text={rc.label} color={rc.text} bg={rc.bg}/>
-              <button onClick={handleLogout} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 10px",fontSize:12,color:C.gray600,cursor:"pointer"}}>ออก</button>
-            </div>
+// ---- TEACHER GRADES ----
+function TeacherGrades({token}){
+  const [grades,setGrades]=useState([]);
+  const [students,setStudents]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [form,setForm]=useState({student_id:"",subject:"",score:"",term:"เทอม 1"});
+  const [saving,setSaving]=useState(false);
+  const load=useCallback(()=>{
+    Promise.all([
+      sbFetch("grades?select=*,students(full_name)&order=created_at.desc",{token}),
+      sbFetch("students?select=id,full_name,student_no&order=student_no.asc",{token}),
+    ]).then(([g,s])=>{setGrades(g||[]);setStudents(s||[]);}).finally(()=>setLoading(false));
+  },[token]);
+  useEffect(()=>{load();},[load]);
+  async function add(){
+    if(!form.student_id||!form.subject||form.score==="")return;
+    setSaving(true);
+    try{await sbFetch("grades",{method:"POST",token,body:JSON.stringify({...form,student_id:parseInt(form.student_id),score:parseFloat(form.score)})});setForm({student_id:"",subject:"",score:"",term:"เทอม 1"});load();}
+    catch(e){alert(e.message);}finally{setSaving(false);}
+  }
+  if(loading)return <Spinner/>;
+  const sel={padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,color:C.gray900,background:C.white,width:"100%",outline:"none"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>➕ เพิ่มคะแนน</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <select style={sel} value={form.student_id} onChange={e=>setForm(p=>({...p,student_id:e.target.value}))}><option value="">เลือกนักเรียน</option>{students.map(s=><option key={s.id} value={s.id}>{s.full_name}</option>)}</select>
+          <input style={sel} placeholder="วิชา" value={form.subject} onChange={e=>setForm(p=>({...p,subject:e.target.value}))}/>
+          <div style={{display:"flex",gap:8}}>
+            <input style={{...sel,flex:1}} type="number" placeholder="คะแนน" value={form.score} onChange={e=>setForm(p=>({...p,score:e.target.value}))}/>
+            <select style={{...sel,flex:1}} value={form.term} onChange={e=>setForm(p=>({...p,term:e.target.value}))}><option>เทอม 1</option><option>เทอม 2</option></select>
           </div>
-          <div style={{padding:"16px"}}>{renderContent()}</div>
-          <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:C.white,borderTop:`1px solid ${C.gray200}`,display:"flex",zIndex:10,paddingBottom:"env(safe-area-inset-bottom)"}}>
-            {tabs.map(t=>(
-              <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 4px 10px",border:"none",background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,borderTop:tab===t.id?`2px solid ${C.primary}`:"2px solid transparent"}}>
-                <span style={{fontSize:20}}>{t.icon}</span>
-                <span style={{fontSize:10,fontWeight:600,color:tab===t.id?C.primary:C.gray400}}>{t.label}</span>
-              </button>
-            ))}
+          <button onClick={add} disabled={saving} style={{background:saving?C.gray400:`linear-gradient(135deg,${C.navy},${C.navyLight})`,color:C.white,border:"none",borderRadius:10,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>{saving?"กำลังบันทึก...":"บันทึกคะแนน"}</button>
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>📊 คะแนนทั้งหมด</div>
+        {grades.length===0?<EmptyState icon="📝" msg="ยังไม่มีข้อมูลคะแนน"/>:grades.map((g,i)=>(
+          <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<grades.length-1?`1px solid ${C.gray100}`:"none"}}>
+            <div><div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{g.students?.full_name}</div><div style={{fontSize:12,color:C.gray400}}>{g.subject} · {g.term}</div></div>
+            <div style={{fontWeight:800,fontSize:18,color:g.score>=80?C.green:g.score>=50?C.yellow:C.red}}>{g.score}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- ANNOUNCEMENTS ----
+function AnnouncementsView({token,profile}){
+  const [list,setList]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});
+  const [saving,setSaving]=useState(false);
+  const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
+  useEffect(()=>{load();},[load]);
+  async function add(){
+    if(!form.title)return;setSaving(true);
+    try{await sbFetch("announcements",{method:"POST",token,body:JSON.stringify({...form,created_by:profile.id})});setForm({title:"",body:"",tag:"",pinned:false});load();}
+    catch(e){alert(e.message);}finally{setSaving(false);}
+  }
+  const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,outline:"none",boxSizing:"border-box"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {profile?.role==="teacher"&&(
+        <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>➕ สร้างประกาศ</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <input style={inp} placeholder="หัวข้อประกาศ *" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
+            <textarea style={{...inp,minHeight:72,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด" value={form.body} onChange={e=>setForm(p=>({...p,body:e.target.value}))}/>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input style={{...inp,flex:1}} placeholder="ป้ายกำกับ" value={form.tag} onChange={e=>setForm(p=>({...p,tag:e.target.value}))}/>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.navy,whiteSpace:"nowrap",cursor:"pointer"}}>
+                <input type="checkbox" checked={form.pinned} onChange={e=>setForm(p=>({...p,pinned:e.target.checked}))}/> ปักหมุด
+              </label>
+            </div>
+            <button onClick={add} disabled={saving||!form.title} style={{background:saving||!form.title?C.gray400:`linear-gradient(135deg,${C.navy},${C.navyLight})`,color:C.white,border:"none",borderRadius:10,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>{saving?"กำลังบันทึก...":"📢 เผยแพร่"}</button>
           </div>
         </div>
-      );
-    }
+      )}
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>ประกาศทั้งหมด</div>
+        {loading?<Spinner/>:list.length===0?<EmptyState icon="📭" msg="ยังไม่มีประกาศ"/>:list.map((a,i)=>(
+          <div key={a.id} style={{padding:"12px 0",borderBottom:i<list.length-1?`1px solid ${C.gray100}`:"none"}}>
+            <div style={{display:"flex",gap:8}}>{a.pinned&&<span>📌</span>}<div><div style={{fontWeight:700,fontSize:14,color:C.gray900}}>{a.title}</div>{a.body&&<div style={{fontSize:13,color:C.gray600,marginTop:2}}>{a.body}</div>}{a.tag&&<span style={{background:C.goldPale,color:C.gold,borderRadius:6,padding:"2px 8px",fontSize:12,fontWeight:600,marginTop:4,display:"inline-block"}}>{a.tag}</span>}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// ---- MESSAGES ----
+function MessagesView({token,profile}){
+  const [messages,setMessages]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [selected,setSelected]=useState(null);
+  const [body,setBody]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [sending,setSending]=useState(false);
+  const load=useCallback(async()=>{
+    const [msgs,profs]=await Promise.all([
+      sbFetch(`messages?or=(sender_id.eq.${profile.id},receiver_id.eq.${profile.id})&select=*&order=created_at.desc`,{token}),
+      sbFetch("profiles?select=id,full_name,role",{token}),
+    ]);
+    setMessages(msgs||[]);setUsers((profs||[]).filter(p=>p.id!==profile.id));setLoading(false);
+  },[token,profile]);
+  useEffect(()=>{load();},[load]);
+  async function send(){
+    if(!body.trim()||!selected)return;setSending(true);
+    try{await sbFetch("messages",{method:"POST",token,body:JSON.stringify({sender_id:profile.id,receiver_id:selected,body})});setBody("");load();}
+    catch(e){alert(e.message);}finally{setSending(false);}
+  }
+  if(loading)return <Spinner/>;
+  const conv=selected?messages.filter(m=>(m.sender_id===profile.id&&m.receiver_id===selected)||(m.sender_id===selected&&m.receiver_id===profile.id)):[];
+  const selUser=users.find(u=>u.id===selected);
+  const roleLabel={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:10}}>💬 ส่งข้อความ</div>
+        <select value={selected||""} onChange={e=>setSelected(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,color:C.gray900,marginBottom:10}}>
+          <option value="">เลือกผู้รับ</option>
+          {users.map(u=><option key={u.id} value={u.id}>{u.full_name} ({roleLabel[u.role]||u.role})</option>)}
+        </select>
+        <div style={{display:"flex",gap:8}}>
+          <input style={{flex:1,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.gray200}`,fontSize:14,outline:"none"}} placeholder="พิมพ์ข้อความ..." value={body} onChange={e=>setBody(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
+          <button onClick={send} disabled={sending||!selected||!body.trim()} style={{background:sending||!selected||!body.trim()?C.gray400:C.navy,color:C.white,border:"none",borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer"}}>ส่ง</button>
+        </div>
+      </div>
+      {selUser&&conv.length>0&&(
+        <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>บทสนทนากับ {selUser.full_name}</div>
+          {conv.map(m=>{const isMe=m.sender_id===profile.id;return(
+            <div key={m.id} style={{display:"flex",justifyContent:isMe?"flex-end":"flex-start",marginBottom:10}}>
+              <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",background:isMe?C.navy:C.gray100,color:isMe?C.white:C.gray900,fontSize:14}}>
+                <div>{m.body}</div>
+                <div style={{fontSize:11,marginTop:4,opacity:0.7,textAlign:isMe?"right":"left"}}>{new Date(m.created_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div>
+              </div>
+            </div>
+          );})}
+        </div>
+      )}
+      {messages.length>0&&(
+        <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>ข้อความล่าสุด</div>
+          {messages.slice(0,8).map((m,i)=>{
+            const other=users.find(u=>u.id===(m.sender_id===profile.id?m.receiver_id:m.sender_id));
+            const isMe=m.sender_id===profile.id;
+            return(<div key={m.id} style={{padding:"10px 0",borderBottom:i<7?`1px solid ${C.gray100}`:"none",cursor:"pointer"}} onClick={()=>setSelected(isMe?m.receiver_id:m.sender_id)}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{isMe?"ฉัน → ":""}{other?.full_name||"—"}</div><div style={{fontSize:11,color:C.gray400}}>{new Date(m.created_at).toLocaleDateString("th-TH",{dateStyle:"short"})}</div></div>
+              <div style={{fontSize:13,color:C.gray600,marginTop:2}}>{m.body}</div>
+            </div>);
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
-    // Register Service Worker
-    if("serviceWorker" in navigator){
-      window.addEventListener("load",()=>{
-        navigator.serviceWorker.register("/sw.js").then(()=>console.log("SW registered")).catch(()=>{});
-      });
-    }
-  </script>
+// ---- STUDENT/PARENT VIEW ----
+function StudentView({token,profile,studentId}){
+  const [data,setData]=useState({attendance:[],grades:[],announcements:[]});
+  const [loading,setLoading]=useState(true);
+  const [info,setInfo]=useState(null);
+  const [page,setPage]=useState("home");
+
+  useEffect(()=>{
+    const load=async()=>{
+      let sid=studentId;
+      if(!sid){
+        const s=await sbFetch(`students?profile_id=eq.${profile.id}&select=*`,{token}).catch(()=>[]);
+        if(s?.[0]){setInfo(s[0]);sid=s[0].id;}
+      }
+      if(!sid){setLoading(false);return;}
+      const [att,grd,ann]=await Promise.all([
+        sbFetch(`attendance?student_id=eq.${sid}&select=*&order=date.desc&limit=10`,{token}).catch(()=>[]),
+        sbFetch(`grades?student_id=eq.${sid}&select=*&order=created_at.desc`,{token}).catch(()=>[]),
+        sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=5",{token}).catch(()=>[]),
+      ]);
+      setData({attendance:att||[],grades:grd||[],announcements:ann||[]});
+      setLoading(false);
+    };
+    load();
+  },[token,profile,studentId]);
+
+  if(loading)return <Spinner/>;
+
+  const sum={present:0,late:0,absent:0,leave:0};
+  data.attendance.forEach(a=>{if(sum[a.status]!==undefined)sum[a.status]++;});
+  const total=data.attendance.length;
+  const pct=total>0?Math.round((sum.present/total)*100):0;
+  const isParent=profile?.role==="parent";
+
+  const menus=[
+    {id:"home",icon:"🏠",label:"หน้าหลัก",bg:`linear-gradient(135deg,${C.navy},${C.navyLight})`,shadow:"rgba(26,58,107,0.4)",action:()=>setPage("home")},
+    {id:"attend",icon:"📅",label:"การมาเรียน",bg:`linear-gradient(135deg,#16a34a,#22c55e)`,shadow:"rgba(22,163,74,0.4)",action:()=>setPage("attend")},
+    {id:"grades",icon:"📊",label:"ผลการเรียน",bg:`linear-gradient(135deg,#7c3aed,#8b5cf6)`,shadow:"rgba(124,58,237,0.4)",action:()=>setPage("grades")},
+    {id:"announce",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldLight})`,shadow:"rgba(201,162,39,0.4)",action:()=>setPage("announce")},
+    {id:"leave",icon:"📝",label:"แจ้งลาเรียน",bg:`linear-gradient(135deg,#ea580c,#f97316)`,shadow:"rgba(234,88,12,0.4)",action:()=>setPage("leave")},
+    {id:"exam",icon:"📋",label:"ผลสอบ",bg:`linear-gradient(135deg,#0369a1,#0ea5e9)`,shadow:"rgba(3,105,161,0.4)",action:()=>window.open(EXAM_RESULT_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:`linear-gradient(135deg,#b45309,#d97706)`,shadow:"rgba(180,83,9,0.4)",action:()=>window.open(TUITION_URL,"_blank")},
+    {id:"messages",icon:"💬",label:"ข้อความ",bg:`linear-gradient(135deg,#0891b2,#06b6d4)`,shadow:"rgba(8,145,178,0.4)",action:()=>setPage("messages")},
+    {id:"checkin",icon:"🕐",label:"ประวัติสแกน",bg:`linear-gradient(135deg,#0f766e,#0d9488)`,shadow:"rgba(15,118,110,0.4)",action:()=>setPage("checkin")},
+  ];
+
+  if(page==="attend")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>📅 สรุปการมาเรียน</div>
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:12}}>
+          <div style={{width:68,height:68,borderRadius:99,background:pct>=80?C.greenLight:C.yellowLight,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20,color:pct>=80?C.green:C.yellow,flexShrink:0}}>{pct}%</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {[{k:"present",l:"มา"},{k:"late",l:"สาย"},{k:"absent",l:"ขาด"},{k:"leave",l:"ลา"}].map(({k,l})=>{
+              const bg={present:C.greenLight,late:C.yellowLight,absent:C.redLight,leave:C.gray100};
+              const tx={present:C.green,late:C.yellow,absent:C.red,leave:C.gray600};
+              return <div key={k} style={{background:bg[k],color:tx[k],borderRadius:8,padding:"4px 10px",fontSize:13,fontWeight:600}}>{l} {sum[k]}</div>;
+            })}
+          </div>
+        </div>
+        {data.attendance.map((a,i)=>(
+          <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<data.attendance.length-1?`1px solid ${C.gray100}`:"none"}}>
+            <div style={{fontSize:14,color:C.gray700}}>{new Date(a.date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"short"})}</div>
+            <span style={{background:{present:C.greenLight,late:C.yellowLight,absent:C.redLight,leave:C.gray100}[a.status],color:{present:C.green,late:C.yellow,absent:C.red,leave:C.gray600}[a.status],borderRadius:99,padding:"2px 10px",fontSize:12,fontWeight:600}}>
+              {{present:"มา",late:"สาย",absent:"ขาด",leave:"ลา"}[a.status]}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  if(page==="grades")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>📊 ผลการเรียน</div>
+        {data.grades.length===0?<EmptyState icon="📝" msg="ยังไม่มีข้อมูลคะแนน"/>:data.grades.map((g,i)=>(
+          <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<data.grades.length-1?`1px solid ${C.gray100}`:"none"}}>
+            <div><div style={{fontWeight:600,fontSize:14,color:C.gray900}}>{g.subject}</div><div style={{fontSize:12,color:C.gray400}}>{g.term}</div></div>
+            <div style={{fontWeight:800,fontSize:20,color:g.score>=80?C.green:g.score>=50?C.yellow:C.red}}>{g.score}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  if(page==="announce")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <AnnouncementsView token={token} profile={profile}/>
+    </div>
+  );
+  if(page==="leave")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <LeaveRequest token={token} profile={profile} students={info?[info]:[]}/>
+    </div>
+  );
+  if(page==="messages")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <MessagesView token={token} profile={profile}/>
+    </div>
+  );
+  if(page==="checkin")return(
+    <div>
+      <button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button>
+      <AttendanceHistory token={token} studentId={studentId||info?.id} studentName={info?.full_name||profile?.full_name}/>
+    </div>
+  );
+
+  // Home
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:`linear-gradient(135deg,${C.navyDark},${C.navy})`,borderRadius:20,padding:20,color:C.white}}>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>ยินดีต้อนรับ</div>
+        <div style={{fontSize:20,fontWeight:800,color:C.gold,marginTop:2}}>{profile?.full_name||info?.full_name}</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",marginTop:4}}>{isParent?"ผู้ปกครอง":"นักเรียน"} · เลขที่ {info?.student_no||"—"}</div>
+        <div style={{display:"flex",gap:10,marginTop:12}}>
+          <div style={{background:"rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:800}}>{pct}%</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>มาเรียน</div>
+          </div>
+          <div style={{background:"rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 12px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:22,fontWeight:800}}>{data.grades.length}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>วิชา</div>
+          </div>
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:20,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>เมนูหลัก</div>
+        <MenuGrid items={menus}/>
+      </div>
+    </div>
+  );
+}
+
+// ---- PARENT VIEW ----
+function ParentView({token,profile}){
+  const [children,setChildren]=useState([]);
+  const [selected,setSelected]=useState(null);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id,students(id,full_name,student_no,classes(name))`,{token})
+      .then(rows=>{const kids=(rows||[]).map(r=>r.students);setChildren(kids);if(kids.length===1)setSelected(kids[0]);})
+      .finally(()=>setLoading(false));
+  },[token,profile]);
+  if(loading)return <Spinner/>;
+  if(!selected)return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:`linear-gradient(135deg,${C.navyDark},${C.navy})`,borderRadius:20,padding:20,color:C.white}}>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.7)"}}>ยินดีต้อนรับ</div>
+        <div style={{fontSize:20,fontWeight:800,color:C.gold}}>{profile?.full_name}</div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(26,58,107,0.08)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>👶 เลือกบุตรหลาน</div>
+        {children.length===0?<EmptyState icon="👪" msg="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(child=>(
+          <button key={child.id} onClick={()=>setSelected(child)} style={{width:"100%",textAlign:"left",background:C.gray50,border:`1.5px solid ${C.gray200}`,borderRadius:12,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:44,height:44,borderRadius:99,background:C.goldPale,border:`2px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👧</div>
+            <div><div style={{fontWeight:700,fontSize:15,color:C.navy}}>{child.full_name}</div><div style={{fontSize:13,color:C.gray400}}>{child.classes?.name||"—"} · เลขที่ {child.student_no||"—"}</div></div>
+            <div style={{marginLeft:"auto",color:C.gold,fontSize:18}}>›</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <button onClick={()=>setSelected(null)} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14}}>← กลับ</button>
+        <div style={{fontWeight:700,fontSize:15,color:C.navy}}>{selected.full_name}</div>
+      </div>
+      <StudentView token={token} profile={profile} studentId={selected.id}/>
+    </div>
+  );
+}
+
+// ---- MAIN APP ----
+function App(){
+  const [auth,setAuth]=useState(()=>{try{const s=localStorage.getItem("school_session");return s?JSON.parse(s):null;}catch{return null;}});
+  const [page,setPage]=useState("home");
+
+  function handleLogin(data){setAuth(data);setPage("home");}
+  function handleLogout(){signOut(auth?.session?.access_token);localStorage.removeItem("school_session");setAuth(null);}
+
+  if(!auth)return <LoginScreen onLogin={handleLogin}/>;
+
+  const {session,profile}=auth;
+  const token=session?.access_token;
+  const role=profile?.role;
+
+  // Teacher pages
+  function renderTeacher(){
+    if(page==="home")return <TeacherHome token={token} profile={profile} setPage={setPage}/>;
+    if(page==="attendance")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><TeacherAttendance token={token} profile={profile}/></div>;
+    if(page==="grades")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><TeacherGrades token={token}/></div>;
+    if(page==="announcements")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><AnnouncementsView token={token} profile={profile}/></div>;
+    if(page==="messages")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><MessagesView token={token} profile={profile}/></div>;
+    if(page==="leave")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><LeaveRequest token={token} profile={profile} students={[]}/></div>;
+    if(page==="checkin_history")return <div><button onClick={()=>setPage("home")} style={{background:C.gray100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:16}}>← กลับ</button><AttendanceHistory token={token}/></div>;
+    return <TeacherHome token={token} profile={profile} setPage={setPage}/>;
+  }
+
+  const roleLabel={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง"};
+  const roleBg={teacher:`linear-gradient(135deg,${C.navy},${C.navyLight})`,student:`linear-gradient(135deg,#16a34a,#22c55e)`,parent:`linear-gradient(135deg,#ea580c,#f97316)`};
+
+  return(
+    <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.bg,fontFamily:"'Sarabun','Segoe UI',sans-serif",paddingBottom:20}}>
+      {/* Header */}
+      <div style={{background:`linear-gradient(135deg,${C.navyDark},${C.navy})`,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 2px 8px rgba(26,58,107,0.3)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <img src="/icon-192.png" alt="logo" style={{width:34,height:34,borderRadius:8}}/>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:C.gold}}>โรงเรียนกลั่นวิทยา</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{profile?.full_name}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{background:roleBg[role]||roleBg.teacher,color:C.white,borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:700}}>{roleLabel[role]||role}</span>
+          <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"5px 10px",fontSize:12,color:C.white,cursor:"pointer"}}>ออก</button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{padding:16,animation:"fadeIn 0.3s ease"}}>
+        {role==="teacher"?renderTeacher():role==="parent"?<ParentView token={token} profile={profile}/>:<StudentView token={token} profile={profile}/>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/sw.js").catch(()=>{});});}
+</script>
 </body>
 </html>
