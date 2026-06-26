@@ -448,17 +448,19 @@ function TeacherHomeView({token,profile,setPage}){
 }
 
 // ======= PARENT VIEW =======
-function ParentView({token,profile}){
+function ParentView({token,profile,userId}){
   const [children,setChildren]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
   useEffect(()=>{
     const load=async()=>{
       setLoading(true);setErr("");
       try{
-        const links=await sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id`,{token});
+        const parentId=userId||profile?.id;
+        const links=await sbFetch(`parent_student?parent_id=eq.${parentId}&select=student_id`,{token});
         const ids=(links||[]).map(x=>x.student_id).filter(Boolean);
-        if(ids.length===0){setChildren([]);return;}
+        if(ids.length===0){setChildren([]);setErr("ไม่พบข้อมูลการผูกผู้ปกครองกับนักเรียนใน parent_student");return;}
         const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token});
         setChildren(k||[]);
+        if((k||[]).length===0){setErr("พบการผูกแล้ว แต่ยังอ่านข้อมูลนักเรียนไม่ได้ กรุณาตรวจ RLS ของ students/classes");}
         if((k||[]).length===1){setSel(k[0]);setInfo(k[0]);}
       }catch(e){
         setChildren([]);
@@ -466,7 +468,7 @@ function ParentView({token,profile}){
       }finally{setLoading(false);}
     };
     load();
-  },[token,profile]);
+  },[token,profile,userId]);
   if(loading)return <Spin/>;
   if(!sel)return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -584,7 +586,7 @@ function App(){
     );
     if(tab==="home"){
       if(role==="teacher")return <TeacherHomeView token={token} profile={profile} setPage={goPage}/>;
-      if(role==="parent")return <ParentView token={token} profile={profile}/>;
+      if(role==="parent")return <ParentView token={token} profile={profile} userId={session?.user?.id}/>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
     return null;
