@@ -540,16 +540,19 @@ function App(){
   const [auth,setAuth]=useState(()=>{try{const s=localStorage.getItem("sch");return s?JSON.parse(s):null;}catch{return null;}});
   const [tab,setTab]=useState("home");
   const [subPage,setSubPage]=useState(null);
+  const [activeRole,setActiveRole]=useState(null);
 
   function goPage(p){setSubPage(p);setTab("home");}
   function goBack(){setSubPage(null);}
-  function onLogin(d){setAuth(d);setTab("home");setSubPage(null);}
+  function onLogin(d){setAuth(d);setTab("home");setSubPage(null);setActiveRole(null);}
   function onLogout(){signOut(auth?.session?.access_token);localStorage.removeItem("sch");setAuth(null);}
 
   if(!auth)return <Login onLogin={onLogin}/>;
   const {session,profile}=auth;
   const token=session?.access_token;
-  const role=profile?.role;
+  const rawRole=profile?.role;
+  const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
+  const hasDualRole=rawRole==="teacher_parent";
 
   // Bottom tabs
   const tabs=role==="teacher"
@@ -592,7 +595,7 @@ function App(){
     return null;
   }
 
-  const rl={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง"};
+  const rl={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง",teacher_parent:"ครู/ผู้ปกครอง"};
 
   return(
     <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.bg,fontFamily:"'Sarabun','Segoe UI',sans-serif",paddingBottom:72}}>
@@ -610,6 +613,13 @@ function App(){
 
       {/* Content */}
       <div style={{padding:14,animation:"fadeIn 0.25s ease"}}>
+        {hasDualRole&&<div style={{background:C.white,borderRadius:14,padding:6,display:"flex",gap:6,boxShadow:"0 2px 8px rgba(0,0,0,0.07)",marginBottom:12}}>
+          {[{id:"teacher",label:"โหมดครู",icon:"👩‍🏫"},{id:"parent",label:"โหมดผู้ปกครอง",icon:"👪"}].map(x=>(
+            <button key={x.id} onClick={()=>{setActiveRole(x.id);setTab("home");setSubPage(null);}} style={{flex:1,border:"none",borderRadius:10,padding:"9px 8px",background:role===x.id?`linear-gradient(135deg,${C.navy},${C.navyL})`:C.g100,color:role===x.id?C.white:C.g600,fontSize:13,fontWeight:800,cursor:"pointer"}}>
+              {x.icon} {x.label}
+            </button>
+          ))}
+        </div>}
         {renderContent()}
       </div>
 
