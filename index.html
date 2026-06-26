@@ -340,13 +340,13 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const isParent=profile?.role==="parent";
   const menus=[
     {id:"att",icon:"📅",label:"การมาเรียน",bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>onPageChange("attend")},
+    {id:"hist",icon:"🕐",label:"ประวัติสแกน",bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
     {id:"grade",icon:"📊",label:"ผลการเรียน",bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
-    {id:"leave",icon:"📝",label:"แจ้งลาเรียน",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
     {id:"exam",icon:"📋",label:"ผลสอบ",bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>window.open(TUITION_URL,"_blank")},
+    {id:"leave",icon:"📝",label:"แจ้งลาเรียน",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
     {id:"msg",icon:"💬",label:"ข้อความ",bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
-    {id:"hist",icon:"🕐",label:"ประวัติสแกน",bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
   ];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -483,6 +483,8 @@ function ParentView({token,profile}){
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
   if(page==="messages")return <div><Back/><Messages token={token} profile={profile}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name}/></div>;
+  if(page==="exam"){window.open(EXAM_URL,"_blank");setPage("home");}
+  if(page==="tuition"){window.open(TUITION_URL,"_blank");setPage("home");}
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
