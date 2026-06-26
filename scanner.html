@@ -53,7 +53,10 @@ const C={
 
 function App(){
   const [auth,setAuth]=useState(()=>{
-    try{const s=localStorage.getItem("school_session");return s?JSON.parse(s):null;}catch{return null;}
+    try{
+      const s=localStorage.getItem("sch")||localStorage.getItem("school_session");
+      return s?JSON.parse(s):null;
+    }catch{return null;}
   });
   const [tab,setTab]=useState("scan"); // scan | qrcodes | log
   const [scanning,setScanning]=useState(false);
@@ -72,7 +75,7 @@ function App(){
       .then(async(tc)=>{
         if(!tc||tc.length===0){setStudents([]);return;}
         const classIds=tc.map(t=>t.class_id).join(",");
-        const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
+        const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,student_id_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
         setStudents(stu||[]);
       });
   },[auth]);
@@ -135,7 +138,7 @@ function App(){
       await sbFetch("checkin_log",{
         method:"POST",
         token:auth.session.access_token,
-        body:JSON.stringify({student_id:studentId,type:scanMode,scanned_by:auth.profile.id}),
+        body:JSON.stringify({student_id:student.id,type:scanMode,scanned_by:auth.profile.id}),
       });
       setLastScan({
         success:true,

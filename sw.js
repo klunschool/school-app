@@ -1,4 +1,4 @@
-const CACHE = "school-app-v3";
+const CACHE = "school-app-v5";
 const ASSETS = ["/", "/index.html"];
 
 self.addEventListener("install", e => {
