@@ -449,10 +449,23 @@ function TeacherHomeView({token,profile,setPage}){
 
 // ======= PARENT VIEW =======
 function ParentView({token,profile}){
-  const [children,setChildren]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");
+  const [children,setChildren]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
   useEffect(()=>{
-    sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id,students(id,full_name,student_no,classes(name))`,{token})
-      .then(r=>{const k=(r||[]).map(x=>x.students);setChildren(k);if(k.length===1){setSel(k[0]);setInfo(k[0]);}}).finally(()=>setLoading(false));
+    const load=async()=>{
+      setLoading(true);setErr("");
+      try{
+        const links=await sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id`,{token});
+        const ids=(links||[]).map(x=>x.student_id).filter(Boolean);
+        if(ids.length===0){setChildren([]);return;}
+        const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token});
+        setChildren(k||[]);
+        if((k||[]).length===1){setSel(k[0]);setInfo(k[0]);}
+      }catch(e){
+        setChildren([]);
+        setErr(e.message||"โหลดข้อมูลบุตรหลานไม่สำเร็จ");
+      }finally{setLoading(false);}
+    };
+    load();
   },[token,profile]);
   if(loading)return <Spin/>;
   if(!sel)return(
@@ -465,6 +478,7 @@ function ParentView({token,profile}){
       </div>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>👶 เลือกบุตรหลาน</div>
+        {err&&<div style={{background:C.redL,color:C.red,border:`1.5px solid ${C.red}`,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:700,marginBottom:10}}>{err}</div>}
         {children.length===0?<Empty icon="👪" msg="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(c=>(
           <button key={c.id} onClick={()=>{setSel(c);setInfo(c);}} style={{width:"100%",textAlign:"left",background:C.g50,border:`1.5px solid ${C.g200}`,borderRadius:12,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
             <div style={{width:46,height:46,borderRadius:99,background:C.goldP,border:`2px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👧</div>
