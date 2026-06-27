@@ -32,6 +32,7 @@ const SUPABASE_URL="https://jwamejlzhvultfomtarb.supabase.co";
 const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
 const EXAM_URL="https://drive.google.com/";
 const TUITION_URL="https://drive.google.com/";
+function tx(th,en){return localStorage.getItem("school_lang")==="en"?en:th;}
 
 async function sbFetch(path,options={}){
   const res=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{
@@ -89,19 +90,19 @@ function Login({onLogin}){
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <img src="./icon-512.png" style={{width:112,height:112,objectFit:"contain",marginBottom:16,filter:"drop-shadow(0 8px 18px rgba(0,0,0,0.3))"}} alt="ตราโรงเรียนกลั่นวิทยา"/>
-      <div style={{color:C.gold,fontSize:22,fontWeight:800,marginBottom:4}}>โรงเรียนกลั่นวิทยา</div>
-      <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:32}}>ระบบแอปโรงเรียน</div>
+      <div style={{color:C.gold,fontSize:22,fontWeight:800,marginBottom:4}}>{tx("โรงเรียนกลั่นวิทยา","Klunwittaya School")}</div>
+      <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:32}}>{tx("ระบบแอปโรงเรียน","School application")}</div>
       <div style={{width:"100%",maxWidth:360,background:"rgba(255,255,255,0.1)",backdropFilter:"blur(12px)",borderRadius:20,padding:24,border:"1px solid rgba(255,255,255,0.2)"}}>
-        <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:16}}>เข้าสู่ระบบ</div>
-        {["อีเมล","รหัสผ่าน"].map((ph,i)=>(
-          <input key={i} type={i===0?"email":"password"} placeholder={ph} value={i===0?email:pw}
+        <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:16}}>{tx("เข้าสู่ระบบ","Sign in")}</div>
+        {[[tx("อีเมล","Email"),"email"],[tx("รหัสผ่าน","Password"),"password"]].map(([ph,type],i)=>(
+          <input key={i} type={type} placeholder={ph} value={i===0?email:pw}
             onChange={e=>i===0?setEmail(e.target.value):setPw(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&go()}
             style={{width:"100%",padding:"12px 16px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.25)",background:"rgba(255,255,255,0.12)",color:C.white,fontSize:15,outline:"none",marginBottom:12,boxSizing:"border-box"}}/>
         ))}
         {err&&<div style={{background:"rgba(220,38,38,0.2)",border:"1px solid rgba(220,38,38,0.4)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13,marginBottom:12}}>⚠️ {err}</div>}
         <button onClick={go} disabled={loading} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:loading?"rgba(255,255,255,0.2)":`linear-gradient(135deg,${C.gold},${C.goldL})`,color:loading?C.white:C.navyD,fontWeight:800,fontSize:16,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 16px rgba(201,162,39,0.5)"}}>
-          {loading?"กำลังเข้าสู่ระบบ...":"เข้าสู่ระบบ"}
+          {loading?tx("กำลังเข้าสู่ระบบ...","Signing in..."):tx("เข้าสู่ระบบ","Sign in")}
         </button>
       </div>
     </div>
@@ -558,14 +559,14 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const pct=data.att.length>0?Math.round((sum.present/data.att.length)*100):0;
   const isParent=profile?.role==="parent";
   const menus=[
-    {id:"att",icon:"📅",label:"การมาเรียน",bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>onPageChange("attend")},
-    {id:"hist",icon:"🕐",label:"ประวัติสแกน",bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
-    {id:"grade",icon:"📊",label:"ผลการเรียน",bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
-    {id:"ann",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
-    {id:"exam",icon:"📋",label:"ผลสอบ",bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
-    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
-    {id:"leave",icon:"📝",label:"แจ้งลาเรียน",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
-    {id:"msg",icon:"💬",label:"ข้อความ",bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
+    {id:"att",icon:"📅",label:tx("การมาเรียน","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>onPageChange("attend")},
+    {id:"hist",icon:"🕐",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
+    {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
+    {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
+    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
+    {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
+    {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
   ];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -592,7 +593,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       </div>
       {/* เมนู */}
       <div style={{background:C.white,borderRadius:20,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>เมนูหลัก</div>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>{tx("เมนูหลัก","Main menu")}</div>
         <Grid items={menus}/>
       </div>
       {/* ประกาศ */}
@@ -619,16 +620,16 @@ function TeacherHomeView({token,profile,setPage}){
     };load();
   },[token,profile.id]);
   const menus=[
-    {id:"scan",icon:"📷",label:"สแกนเข้า-ออก",bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
-    {id:"hist",icon:"📅",label:"ประวัติสแกน",bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>setPage("checkin")},
-    {id:"att",icon:"✅",label:"เช็คชื่อ",bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>setPage("attendance")},
-    {id:"grade",icon:"📊",label:"คะแนน",bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
-    {id:"ann",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
-    {id:"leave",icon:"📝",label:"รับใบลา",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
-    {id:"exam",icon:"📋",label:"ผลสอบ",bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
-    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
-    {id:"msg",icon:"💬",label:"ข้อความ",bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
-    {id:"import",icon:"📥",label:"นำเข้านักเรียน",bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>window.open("./import.html","_self")},
+    {id:"scan",icon:"📷",label:tx("สแกนเข้า-ออก","Scan in/out"),bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
+    {id:"hist",icon:"📅",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>setPage("checkin")},
+    {id:"att",icon:"✅",label:tx("เช็คชื่อ","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>setPage("attendance")},
+    {id:"grade",icon:"📊",label:tx("คะแนน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
+    {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
+    {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
+    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
+    {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
+    {id:"import",icon:"📥",label:tx("นำเข้านักเรียน","Import students"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>window.open("./import.html","_self")},
   ];
   if(loading)return <Spin/>;
   return(
@@ -655,7 +656,7 @@ function TeacherHomeView({token,profile,setPage}){
       </div>
       {/* เมนูกริด */}
       <div style={{background:C.white,borderRadius:20,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>เมนูหลัก</div>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:14}}>{tx("เมนูหลัก","Main menu")}</div>
         <Grid items={menus}/>
       </div>
       {ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
@@ -760,6 +761,7 @@ function App(){
   const [tab,setTab]=useState("home");
   const [subPage,setSubPage]=useState(null);
   const [activeRole,setActiveRole]=useState(null);
+  const [lang,setLang]=useState(()=>localStorage.getItem("school_lang")||"th");
 
   function goPage(p){setSubPage(p);setTab("home");}
   function goBack(){setSubPage(null);}
@@ -775,8 +777,8 @@ function App(){
 
   // Bottom tabs
   const tabs=["teacher","finance","admin"].includes(role)
-    ?[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"scan",icon:"📷",label:"สแกน"},{id:"announce",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"},{id:"settings",icon:"⚙️",label:"ตั้งค่า"}]
-    :[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"announce",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"},{id:"settings",icon:"⚙️",label:"ตั้งค่า"}];
+    ?[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"scan",icon:"📷",label:tx("สแกน","Scan")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"messages",icon:"💬",label:tx("ข้อความ","Messages")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}]
+    :[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"messages",icon:"💬",label:tx("ข้อความ","Messages")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}];
 
   function handleTab(id){
     if(id==="scan"){window.open("./scanner.html","_self");return;}
@@ -786,7 +788,7 @@ function App(){
   function renderContent(){
     // sub pages
     if(subPage){
-      const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← กลับ</button>;
+      const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← {tx("กลับ","Back")}</button>;
       if(subPage==="checkin")return <div><Back/><AttendHist token={token}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
@@ -798,13 +800,21 @@ function App(){
     if(tab==="messages")return <Messages token={token} profile={profile}/>;
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ การตั้งค่า</div>
-        {[{icon:"👤",label:"ข้อมูลส่วนตัว"},{icon:"🔔",label:"การแจ้งเตือน"},{icon:"ℹ️",label:"เวอร์ชัน 1.0.0"}].map((x,i)=>(
+        <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.1.0","Version 1.1.0")}].map((x,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:"pointer"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
         ))}
-        <button onClick={onLogout} style={{width:"100%",marginTop:20,padding:"12px",background:C.redL,color:C.red,border:`1.5px solid ${C.red}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>🚪 ออกจากระบบ</button>
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`}}>
+          <span style={{fontSize:20}}>🌐</span>
+          <label htmlFor="language-select" style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{tx("ภาษา","Language")}</label>
+          <select id="language-select" value={lang} onChange={e=>{localStorage.setItem("school_lang",e.target.value);setLang(e.target.value);}} style={{border:`1.5px solid ${C.g200}`,borderRadius:9,padding:"7px 9px",background:C.white,color:C.navy,fontWeight:700}}>
+            <option value="th">ไทย</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <button onClick={onLogout} style={{width:"100%",marginTop:20,padding:"12px",background:C.redL,color:C.red,border:`1.5px solid ${C.red}`,borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>🚪 {tx("ออกจากระบบ","Sign out")}</button>
       </div>
     );
     if(tab==="home"){
@@ -815,7 +825,7 @@ function App(){
     return null;
   }
 
-  const rl={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง",teacher_parent:"ครู/ผู้ปกครอง",finance:"ฝ่ายการเงิน",admin:"ผู้ดูแลระบบ"};
+  const rl={teacher:tx("ครู","Teacher"),student:tx("นักเรียน","Student"),parent:tx("ผู้ปกครอง","Parent"),teacher_parent:tx("ครู/ผู้ปกครอง","Teacher/Parent"),finance:tx("ฝ่ายการเงิน","Finance"),admin:tx("ผู้ดูแลระบบ","Administrator")};
 
   return(
     <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.bg,fontFamily:"'Sarabun','Segoe UI',sans-serif",paddingBottom:72}}>
@@ -823,7 +833,7 @@ function App(){
       <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:58,position:"sticky",top:0,zIndex:20,boxShadow:"0 2px 12px rgba(26,58,107,0.35)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <img src="./icon-512.png" style={{width:38,height:38,objectFit:"contain"}} alt="ตราโรงเรียนกลั่นวิทยา"/>
-          <div style={{color:C.gold,fontSize:15,fontWeight:800}}>กลั่นวิทยา</div>
+          <div style={{color:C.gold,fontSize:15,fontWeight:800}}>{tx("กลั่นวิทยา","Klunwittaya")}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:20,cursor:"pointer"}}>🔔</span>
@@ -834,7 +844,7 @@ function App(){
       {/* Content */}
       <div style={{padding:14,animation:"fadeIn 0.25s ease"}}>
         {hasDualRole&&<div style={{background:C.white,borderRadius:14,padding:6,display:"flex",gap:6,boxShadow:"0 2px 8px rgba(0,0,0,0.07)",marginBottom:12}}>
-          {[{id:"teacher",label:"โหมดครู",icon:"👩‍🏫"},{id:"parent",label:"โหมดผู้ปกครอง",icon:"👪"}].map(x=>(
+          {[{id:"teacher",label:tx("โหมดครู","Teacher mode"),icon:"👩‍🏫"},{id:"parent",label:tx("โหมดผู้ปกครอง","Parent mode"),icon:"👪"}].map(x=>(
             <button key={x.id} onClick={()=>{setActiveRole(x.id);setTab("home");setSubPage(null);}} style={{flex:1,border:"none",borderRadius:10,padding:"9px 8px",background:role===x.id?`linear-gradient(135deg,${C.navy},${C.navyL})`:C.g100,color:role===x.id?C.white:C.g600,fontSize:13,fontWeight:800,cursor:"pointer"}}>
               {x.icon} {x.label}
             </button>
