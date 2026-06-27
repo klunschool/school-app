@@ -1,5 +1,12 @@
-const CACHE = "school-app-v5";
-const ASSETS = ["/", "/index.html"];
+const CACHE = "school-app-github-v1";
+const ASSETS = [
+  "./",
+  "./index.html",
+  "./scanner.html",
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png"
+];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));

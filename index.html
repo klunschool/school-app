@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#1a3a6b"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="กลั่นวิทยา"/>
-  <link rel="manifest" href="/manifest.json"/>
-  <link rel="apple-touch-icon" href="/icon-192.png"/>
+  <link rel="manifest" href="./manifest.json"/>
+  <link rel="apple-touch-icon" href="./icon-192.png"/>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -400,7 +400,7 @@ function TeacherHomeView({token,profile,setPage}){
     };load();
   },[token,profile.id]);
   const menus=[
-    {id:"scan",icon:"📷",label:"สแกนเข้า-ออก",bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("/scanner.html","_self")},
+    {id:"scan",icon:"📷",label:"สแกนเข้า-ออก",bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
     {id:"hist",icon:"📅",label:"ประวัติสแกน",bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>setPage("checkin")},
     {id:"att",icon:"✅",label:"เช็คชื่อ",bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>setPage("attendance")},
     {id:"grade",icon:"📊",label:"คะแนน",bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
@@ -560,7 +560,7 @@ function App(){
     :[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"announce",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"},{id:"settings",icon:"⚙️",label:"ตั้งค่า"}];
 
   function handleTab(id){
-    if(id==="scan"){window.open("/scanner.html","_self");return;}
+    if(id==="scan"){window.open("./scanner.html","_self");return;}
     setTab(id);setSubPage(null);
   }
 
@@ -638,7 +638,7 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/sw.js").catch(()=>{});});}
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{});});}
 </script>
 </body>
 </html>
