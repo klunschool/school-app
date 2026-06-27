@@ -347,6 +347,9 @@ function TuitionView({token,profile,student}){
   const [invoices,setInvoices]=useState([]);
   const [staffInvoices,setStaffInvoices]=useState([]);
   const [payments,setPayments]=useState([]);
+  const [paymentHistory,setPaymentHistory]=useState([]);
+  const [showHistory,setShowHistory]=useState(false);
+  const [historyStatus,setHistoryStatus]=useState("all");
   const [receipts,setReceipts]=useState([]);
   const [terms,setTerms]=useState([]);
   const [classes,setClasses]=useState([]);
@@ -367,13 +370,14 @@ function TuitionView({token,profile,student}){
     setLoading(true);setError("");
     try{
       if(isStaff){
-        const [p,t,c,allInv]=await Promise.all([
-          sbFetch("payments?status=eq.pending&select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name)))&order=created_at.asc",{token}),
+        const [allPay,t,c,allInv]=await Promise.all([
+          sbFetch("payments?select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name))),receipts(receipt_no,issued_at)&order=created_at.desc&limit=300",{token}),
           sbFetch("fee_terms?is_active=eq.true&select=*&order=academic_year.desc,term_no.desc",{token}),
           sbFetch("classes?select=id,name&order=id.asc",{token}),
           sbFetch("student_invoices?select=*,fee_terms(name,academic_year,term_no),students(full_name,student_no,classes(name))&order=created_at.desc&limit=300",{token})
         ]);
-        setPayments(p||[]);
+        setPaymentHistory(allPay||[]);
+        setPayments((allPay||[]).filter(x=>x.status==="pending").reverse());
         setTerms(t||[]);setClasses(c||[]);
         setStaffInvoices(allInv||[]);
       }else if(isTeacher){
@@ -530,6 +534,38 @@ function TuitionView({token,profile,student}){
           </div>
         </div>
       ))}
+      <div style={box}>
+        <button onClick={()=>setShowHistory(v=>!v)} style={{width:"100%",border:"none",background:C.g50,color:C.navy,borderRadius:10,padding:11,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>🕘 ประวัติการชำระย้อนหลัง</span>
+          <span>{showHistory?"▲":"▼"}</span>
+        </button>
+        {showHistory&&<div style={{marginTop:12}}>
+          <select value={historyStatus} onChange={e=>setHistoryStatus(e.target.value)} style={{width:"100%",padding:9,border:`1.5px solid ${C.g200}`,borderRadius:9,background:C.white,fontSize:13,marginBottom:8}}>
+            <option value="all">ทุกสถานะ</option>
+            <option value="pending">รอตรวจสอบ</option>
+            <option value="approved">อนุมัติแล้ว</option>
+            <option value="rejected">ไม่อนุมัติ</option>
+          </select>
+          {paymentHistory.filter(p=>historyStatus==="all"||p.status===historyStatus).length===0?<Empty icon="🕘" msg="ยังไม่มีประวัติการชำระ"/>:paymentHistory.filter(p=>historyStatus==="all"||p.status===historyStatus).map((p,i)=>{
+            const receipt=p.receipts?.[0];
+            return <div key={p.id} style={{padding:"11px 0",borderBottom:i<paymentHistory.length-1?`1px solid ${C.g100}`:"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.student_invoices?.students?.full_name||"-"}</div>
+                  <div style={{fontSize:11,color:C.g400}}>{p.student_invoices?.students?.classes?.name||"-"} · {new Date(p.paid_at).toLocaleString("th-TH")}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:C.navy}}>฿{money(p.amount)}</div>
+                  <div style={{marginTop:3}}>{badge(p.status)}</div>
+                </div>
+              </div>
+              {receipt&&<div style={{fontSize:11,color:C.green,fontWeight:700,marginTop:5}}>ใบเสร็จ {receipt.receipt_no}</div>}
+              {p.review_note&&<div style={{fontSize:11,color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
+              {p.slip_path&&<button onClick={()=>openSlip(p.slip_path)} style={{marginTop:7,border:`1px solid ${C.navy}`,background:C.white,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>ดูสลิป</button>}
+            </div>;
+          })}
+        </div>}
+      </div>
     </div>
   );
 
