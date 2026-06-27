@@ -345,6 +345,7 @@ function TuitionView({token,profile,student}){
   const [studentInfo,setStudentInfo]=useState(student||null);
   const [teacherClasses,setTeacherClasses]=useState([]);
   const [invoices,setInvoices]=useState([]);
+  const [staffInvoices,setStaffInvoices]=useState([]);
   const [payments,setPayments]=useState([]);
   const [receipts,setReceipts]=useState([]);
   const [terms,setTerms]=useState([]);
@@ -366,13 +367,15 @@ function TuitionView({token,profile,student}){
     setLoading(true);setError("");
     try{
       if(isStaff){
-        const [p,t,c]=await Promise.all([
+        const [p,t,c,allInv]=await Promise.all([
           sbFetch("payments?status=eq.pending&select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name)))&order=created_at.asc",{token}),
           sbFetch("fee_terms?is_active=eq.true&select=*&order=academic_year.desc,term_no.desc",{token}),
-          sbFetch("classes?select=id,name&order=id.asc",{token})
+          sbFetch("classes?select=id,name&order=id.asc",{token}),
+          sbFetch("student_invoices?select=*,fee_terms(name,academic_year,term_no),students(full_name,student_no,classes(name))&order=created_at.desc&limit=300",{token})
         ]);
         setPayments(p||[]);
         setTerms(t||[]);setClasses(c||[]);
+        setStaffInvoices(allInv||[]);
       }else if(isTeacher){
         const links=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id,classes(id,name)`,{token});
         const classIds=(links||[]).map(x=>x.class_id);
@@ -457,6 +460,7 @@ function TuitionView({token,profile,student}){
       })});
       alert(`สร้างใบแจ้งยอดสำเร็จ ${Number(result||0)} รายการ`);
       setCreateForm(p=>({...p,description:"ค่าเล่าเรียน",amount:""}));
+      await load();
     }catch(e){setError(e.message);}
     finally{setBusy("");}
   }
@@ -490,6 +494,26 @@ function TuitionView({token,profile,student}){
           </div>
           <button onClick={createInvoices} disabled={busy==="create"} style={{border:"none",background:busy==="create"?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800,cursor:"pointer"}}>{busy==="create"?"กำลังสร้าง...":"สร้างใบแจ้งยอด"}</button>
         </div>
+      </div>
+      <div style={box}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:14,fontWeight:800,color:C.navy}}>ใบแจ้งยอดที่สร้างแล้ว</div>
+          <span style={{background:C.g100,color:C.g600,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{staffInvoices.length} รายการ</span>
+        </div>
+        {staffInvoices.length===0?<Empty icon="🧾" msg="ยังไม่มีใบแจ้งยอด"/>:staffInvoices.map((inv,i)=>(
+          <div key={inv.id} style={{padding:"10px 0",borderBottom:i<staffInvoices.length-1?`1px solid ${C.g100}`:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.students?.full_name||"-"}</div>
+                <div style={{fontSize:11,color:C.g400}}>{inv.students?.classes?.name||"-"} · เลขที่ {inv.students?.student_no||"-"} · {inv.fee_terms?.name||inv.invoice_no}</div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontWeight:800,fontSize:13,color:C.navy}}>฿{money(inv.total_amount)}</div>
+                <div style={{marginTop:3}}>{badge(inv.status)}</div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
       {payments.length===0?<div style={box}><Empty icon="✅" msg="ไม่มีรายการรอตรวจสอบ"/></div>:payments.map(p=>(
         <div key={p.id} style={box}>
