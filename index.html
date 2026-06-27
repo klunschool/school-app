@@ -350,6 +350,9 @@ function TuitionView({token,profile,student}){
   const [paymentHistory,setPaymentHistory]=useState([]);
   const [showHistory,setShowHistory]=useState(false);
   const [historyStatus,setHistoryStatus]=useState("all");
+  const [staffSection,setStaffSection]=useState("manage");
+  const [invoiceClass,setInvoiceClass]=useState("all");
+  const [historyClass,setHistoryClass]=useState("all");
   const [receipts,setReceipts]=useState([]);
   const [terms,setTerms]=useState([]);
   const [classes,setClasses]=useState([]);
@@ -472,6 +475,11 @@ function TuitionView({token,profile,student}){
   if(loading)return <Spin/>;
   const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
   const badge=status=>{const x=statusMap[status]||[status,C.g600,C.g100];return <span style={{background:x[2],color:x[1],borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{x[0]}</span>;};
+  const filteredStaffInvoices=staffInvoices.filter(x=>invoiceClass==="all"||String(x.students?.classes?.name)===invoiceClass);
+  const filteredPaymentHistory=paymentHistory.filter(p=>
+    (historyStatus==="all"||p.status===historyStatus)&&
+    (historyClass==="all"||String(p.student_invoices?.students?.classes?.name)===historyClass)
+  );
 
   if(isStaff)return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -480,7 +488,10 @@ function TuitionView({token,profile,student}){
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>รายการรอตรวจสอบ {payments.length} รายการ</div>
       </div>
       {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
-      <div style={box}>
+      <div style={{background:C.white,borderRadius:12,padding:5,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        {[{id:"manage",label:"จัดการ"},{id:"invoices",label:"ใบแจ้งยอด"},{id:"history",label:"ประวัติ"}].map(x=><button key={x.id} onClick={()=>setStaffSection(x.id)} style={{border:"none",borderRadius:9,padding:"9px 4px",background:staffSection===x.id?C.navy:C.g100,color:staffSection===x.id?C.white:C.g600,fontWeight:800,fontSize:12,cursor:"pointer"}}>{x.label}</button>)}
+      </div>
+      {staffSection==="manage"&&<div style={box}>
         <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดทั้งห้อง</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <select value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
@@ -498,14 +509,18 @@ function TuitionView({token,profile,student}){
           </div>
           <button onClick={createInvoices} disabled={busy==="create"} style={{border:"none",background:busy==="create"?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800,cursor:"pointer"}}>{busy==="create"?"กำลังสร้าง...":"สร้างใบแจ้งยอด"}</button>
         </div>
-      </div>
-      <div style={box}>
+      </div>}
+      {staffSection==="invoices"&&<div style={box}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div style={{fontSize:14,fontWeight:800,color:C.navy}}>ใบแจ้งยอดที่สร้างแล้ว</div>
-          <span style={{background:C.g100,color:C.g600,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{staffInvoices.length} รายการ</span>
+          <span style={{background:C.g100,color:C.g600,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{filteredStaffInvoices.length} รายการ</span>
         </div>
-        {staffInvoices.length===0?<Empty icon="🧾" msg="ยังไม่มีใบแจ้งยอด"/>:staffInvoices.map((inv,i)=>(
-          <div key={inv.id} style={{padding:"10px 0",borderBottom:i<staffInvoices.length-1?`1px solid ${C.g100}`:"none"}}>
+        <select value={invoiceClass} onChange={e=>setInvoiceClass(e.target.value)} style={{width:"100%",padding:9,border:`1.5px solid ${C.g200}`,borderRadius:9,background:C.white,fontSize:13,marginBottom:8}}>
+          <option value="all">ทุกห้องเรียน</option>
+          {classes.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>
+        {filteredStaffInvoices.length===0?<Empty icon="🧾" msg="ยังไม่มีใบแจ้งยอดในห้องนี้"/>:filteredStaffInvoices.map((inv,i)=>(
+          <div key={inv.id} style={{padding:"10px 0",borderBottom:i<filteredStaffInvoices.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
               <div style={{minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:13,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{inv.students?.full_name||"-"}</div>
@@ -518,8 +533,8 @@ function TuitionView({token,profile,student}){
             </div>
           </div>
         ))}
-      </div>
-      {payments.length===0?<div style={box}><Empty icon="✅" msg="ไม่มีรายการรอตรวจสอบ"/></div>:payments.map(p=>(
+      </div>}
+      {staffSection==="manage"&&(payments.length===0?<div style={box}><Empty icon="✅" msg="ไม่มีรายการรอตรวจสอบ"/></div>:payments.map(p=>(
         <div key={p.id} style={box}>
           <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
             <div><div style={{fontWeight:800,color:C.navy}}>{p.student_invoices?.students?.full_name}</div>
@@ -533,22 +548,23 @@ function TuitionView({token,profile,student}){
             <button onClick={()=>review(p,"approved")} disabled={busy===p.id} style={{border:"none",background:C.green,color:C.white,borderRadius:10,padding:"10px 14px",fontWeight:700,cursor:"pointer"}}>อนุมัติ</button>
           </div>
         </div>
-      ))}
-      <div style={box}>
-        <button onClick={()=>setShowHistory(v=>!v)} style={{width:"100%",border:"none",background:C.g50,color:C.navy,borderRadius:10,padding:11,fontSize:14,fontWeight:800,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span>🕘 ประวัติการชำระย้อนหลัง</span>
-          <span>{showHistory?"▲":"▼"}</span>
-        </button>
-        {showHistory&&<div style={{marginTop:12}}>
+      )))}
+      {staffSection==="history"&&<div style={box}>
+        <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>🕘 ประวัติการชำระย้อนหลัง</div>
+        <div>
+          <select value={historyClass} onChange={e=>setHistoryClass(e.target.value)} style={{width:"100%",padding:9,border:`1.5px solid ${C.g200}`,borderRadius:9,background:C.white,fontSize:13,marginBottom:8}}>
+            <option value="all">ทุกห้องเรียน</option>
+            {classes.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
           <select value={historyStatus} onChange={e=>setHistoryStatus(e.target.value)} style={{width:"100%",padding:9,border:`1.5px solid ${C.g200}`,borderRadius:9,background:C.white,fontSize:13,marginBottom:8}}>
             <option value="all">ทุกสถานะ</option>
             <option value="pending">รอตรวจสอบ</option>
             <option value="approved">อนุมัติแล้ว</option>
             <option value="rejected">ไม่อนุมัติ</option>
           </select>
-          {paymentHistory.filter(p=>historyStatus==="all"||p.status===historyStatus).length===0?<Empty icon="🕘" msg="ยังไม่มีประวัติการชำระ"/>:paymentHistory.filter(p=>historyStatus==="all"||p.status===historyStatus).map((p,i)=>{
+          {filteredPaymentHistory.length===0?<Empty icon="🕘" msg="ยังไม่มีประวัติการชำระ"/>:filteredPaymentHistory.map((p,i)=>{
             const receipt=p.receipts?.[0];
-            return <div key={p.id} style={{padding:"11px 0",borderBottom:i<paymentHistory.length-1?`1px solid ${C.g100}`:"none"}}>
+            return <div key={p.id} style={{padding:"11px 0",borderBottom:i<filteredPaymentHistory.length-1?`1px solid ${C.g100}`:"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:800,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.student_invoices?.students?.full_name||"-"}</div>
@@ -564,8 +580,8 @@ function TuitionView({token,profile,student}){
               {p.slip_path&&<button onClick={()=>openSlip(p.slip_path)} style={{marginTop:7,border:`1px solid ${C.navy}`,background:C.white,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>ดูสลิป</button>}
             </div>;
           })}
-        </div>}
-      </div>
+        </div>
+      </div>}
     </div>
   );
 
