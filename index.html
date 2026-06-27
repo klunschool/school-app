@@ -46,6 +46,25 @@ async function signIn(email,pw){
   const d=await res.json();if(!res.ok)throw new Error(d.error_description||"เข้าสู่ระบบไม่สำเร็จ");return d;
 }
 async function signOut(token){await fetch(`${SUPABASE_URL}/auth/v1/logout`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`}}).catch(()=>{});}
+async function uploadPaymentSlip(file,path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/payment-slips/${path}`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":file.type||"image/jpeg","x-upsert":"false"},
+    body:file,
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||"อัปโหลดสลิปไม่สำเร็จ");}
+  return path;
+}
+async function getPaymentSlipUrl(path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/payment-slips/${path}`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+    body:JSON.stringify({expiresIn:300}),
+  });
+  const d=await res.json();
+  if(!res.ok)throw new Error(d.message||"เปิดสลิปไม่สำเร็จ");
+  return `${SUPABASE_URL}/storage/v1${d.signedURL}`;
+}
 
 const C={
   navy:"#1a3a6b",navyD:"#0f2347",navyL:"#2a5298",
@@ -318,6 +337,206 @@ function Messages({token,profile}){
   );
 }
 
+// ======= TUITION PHASE 1 =======
+function TuitionView({token,profile,student}){
+  const isStaff=["finance","admin"].includes(profile?.role);
+  const [studentInfo,setStudentInfo]=useState(student||null);
+  const [invoices,setInvoices]=useState([]);
+  const [payments,setPayments]=useState([]);
+  const [receipts,setReceipts]=useState([]);
+  const [terms,setTerms]=useState([]);
+  const [classes,setClasses]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState("");
+  const [form,setForm]=useState({invoiceId:"",amount:"",file:null});
+  const [createForm,setCreateForm]=useState({termId:"",classId:"",description:"ค่าเล่าเรียน",amount:"",dueDate:""});
+  const [error,setError]=useState("");
+  const money=n=>Number(n||0).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const statusMap={
+    draft:["ฉบับร่าง",C.g600,C.g100],unpaid:["ค้างชำระ",C.red,C.redL],
+    pending:["รอตรวจสอบ",C.yellow,C.yellowL],paid:["ชำระแล้ว",C.green,C.greenL],
+    cancelled:["ยกเลิก",C.g600,C.g100],approved:["อนุมัติแล้ว",C.green,C.greenL],
+    rejected:["ไม่ผ่าน",C.red,C.redL]
+  };
+
+  const load=useCallback(async()=>{
+    setLoading(true);setError("");
+    try{
+      if(isStaff){
+        const [p,t,c]=await Promise.all([
+          sbFetch("payments?status=eq.pending&select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name)))&order=created_at.asc",{token}),
+          sbFetch("fee_terms?is_active=eq.true&select=*&order=academic_year.desc,term_no.desc",{token}),
+          sbFetch("classes?select=id,name&order=id.asc",{token})
+        ]);
+        setPayments(p||[]);
+        setTerms(t||[]);setClasses(c||[]);
+      }else{
+        let s=studentInfo;
+        if(!s){
+          const found=await sbFetch(`students?profile_id=eq.${profile.id}&select=id,full_name,student_no,classes(name)&limit=1`,{token});
+          s=found?.[0]||null;setStudentInfo(s);
+        }
+        if(!s){setInvoices([]);return;}
+        const inv=await sbFetch(`student_invoices?student_id=eq.${s.id}&select=*,fee_terms(name,academic_year,term_no),invoice_items(id,description,amount)&order=created_at.desc`,{token});
+        setInvoices(inv||[]);
+        const ids=(inv||[]).map(x=>x.id);
+        if(ids.length){
+          const pay=await sbFetch(`payments?invoice_id=in.(${ids.join(",")})&select=*&order=created_at.desc`,{token});
+          setPayments(pay||[]);
+          const payIds=(pay||[]).map(x=>x.id);
+          if(payIds.length){
+            const rec=await sbFetch(`receipts?payment_id=in.(${payIds.join(",")})&select=*`,{token});
+            setReceipts(rec||[]);
+          }else setReceipts([]);
+        }else{setPayments([]);setReceipts([]);}
+      }
+    }catch(e){setError(e.message||"โหลดข้อมูลค่าเทอมไม่สำเร็จ");}
+    finally{setLoading(false);}
+  },[token,profile.id,isStaff,studentInfo?.id]);
+  useEffect(()=>{load();},[load]);
+
+  async function submitPayment(){
+    const invoice=invoices.find(x=>x.id===form.invoiceId);
+    if(!invoice||!form.file||Number(form.amount)<=0){setError("กรุณาเลือกใบแจ้งยอด ระบุจำนวนเงิน และแนบสลิป");return;}
+    if(!form.file.type.startsWith("image/")){setError("กรุณาแนบสลิปเป็นไฟล์รูปภาพ");return;}
+    if(form.file.size>5*1024*1024){setError("ไฟล์สลิปต้องมีขนาดไม่เกิน 5 MB");return;}
+    setBusy("submit");setError("");
+    try{
+      const ext=(form.file.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
+      const path=`${profile.id}/${invoice.id}/${Date.now()}.${ext}`;
+      await uploadPaymentSlip(form.file,path,token);
+      await sbFetch("payments",{method:"POST",token,body:JSON.stringify({
+        invoice_id:invoice.id,parent_id:profile.id,amount:Number(form.amount),
+        method:"bank_transfer",paid_at:new Date().toISOString(),slip_path:path,status:"pending"
+      })});
+      setForm({invoiceId:"",amount:"",file:null});await load();
+    }catch(e){setError(e.message);}
+    finally{setBusy("");}
+  }
+
+  async function openSlip(path){
+    try{const url=await getPaymentSlipUrl(path,token);window.open(url,"_blank");}
+    catch(e){setError(e.message);}
+  }
+  async function review(payment,status){
+    const note=status==="rejected"?(prompt("ระบุเหตุผลที่ไม่อนุมัติ")||"หลักฐานไม่ถูกต้อง"):"";
+    setBusy(payment.id);setError("");
+    try{
+      await sbFetch(`payments?id=eq.${payment.id}`,{method:"PATCH",token,body:JSON.stringify({
+        status,review_note:note,reviewed_by:profile.id,reviewed_at:new Date().toISOString()
+      })});
+      await load();
+    }catch(e){setError(e.message);}
+    finally{setBusy("");}
+  }
+  async function createInvoices(){
+    if(!createForm.termId||!createForm.description.trim()||Number(createForm.amount)<=0||!createForm.dueDate){
+      setError("กรุณากรอกข้อมูลใบแจ้งยอดให้ครบ");return;
+    }
+    setBusy("create");setError("");
+    try{
+      const result=await sbFetch("rpc/create_fee_invoices",{method:"POST",token,body:JSON.stringify({
+        p_term_id:Number(createForm.termId),
+        p_description:createForm.description.trim(),
+        p_amount:Number(createForm.amount),
+        p_due_date:createForm.dueDate,
+        p_class_id:createForm.classId?Number(createForm.classId):null
+      })});
+      alert(`สร้างใบแจ้งยอดสำเร็จ ${Number(result||0)} รายการ`);
+      setCreateForm(p=>({...p,description:"ค่าเล่าเรียน",amount:""}));
+    }catch(e){setError(e.message);}
+    finally{setBusy("");}
+  }
+
+  if(loading)return <Spin/>;
+  const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
+  const badge=status=>{const x=statusMap[status]||[status,C.g600,C.g100];return <span style={{background:x[2],color:x[1],borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{x[0]}</span>;};
+
+  if(isStaff)return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={box}>
+        <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💰 ตรวจสอบการชำระค่าเทอม</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>รายการรอตรวจสอบ {payments.length} รายการ</div>
+      </div>
+      {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
+      <div style={box}>
+        <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดทั้งห้อง</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <select value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
+            <option value="">เลือกปีการศึกษา/ภาคเรียน</option>
+            {terms.map(t=><option key={t.id} value={t.id}>{t.name} ({t.academic_year})</option>)}
+          </select>
+          <select value={createForm.classId} onChange={e=>setCreateForm(p=>({...p,classId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
+            <option value="">นักเรียนทุกห้อง</option>
+            {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <input value={createForm.description} onChange={e=>setCreateForm(p=>({...p,description:e.target.value}))} placeholder="รายการค่าใช้จ่าย" style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>
+          <div style={{display:"flex",gap:8}}>
+            <input type="number" min="0" value={createForm.amount} onChange={e=>setCreateForm(p=>({...p,amount:e.target.value}))} placeholder="จำนวนเงิน" style={{minWidth:0,flex:1,padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>
+            <input type="date" value={createForm.dueDate} onChange={e=>setCreateForm(p=>({...p,dueDate:e.target.value}))} style={{minWidth:0,flex:1,padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>
+          </div>
+          <button onClick={createInvoices} disabled={busy==="create"} style={{border:"none",background:busy==="create"?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800,cursor:"pointer"}}>{busy==="create"?"กำลังสร้าง...":"สร้างใบแจ้งยอด"}</button>
+        </div>
+      </div>
+      {payments.length===0?<div style={box}><Empty icon="✅" msg="ไม่มีรายการรอตรวจสอบ"/></div>:payments.map(p=>(
+        <div key={p.id} style={box}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+            <div><div style={{fontWeight:800,color:C.navy}}>{p.student_invoices?.students?.full_name}</div>
+            <div style={{fontSize:12,color:C.g400}}>{p.student_invoices?.students?.classes?.name} · {p.student_invoices?.invoice_no}</div></div>
+            <div style={{fontSize:18,fontWeight:800,color:C.yellow}}>฿{money(p.amount)}</div>
+          </div>
+          <div style={{fontSize:12,color:C.g600,marginTop:8}}>แจ้งชำระ {new Date(p.paid_at).toLocaleString("th-TH")}</div>
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button onClick={()=>openSlip(p.slip_path)} style={{flex:1,border:`1.5px solid ${C.navy}`,background:C.white,color:C.navy,borderRadius:10,padding:10,fontWeight:700,cursor:"pointer"}}>ดูสลิป</button>
+            <button onClick={()=>review(p,"rejected")} disabled={busy===p.id} style={{border:"none",background:C.redL,color:C.red,borderRadius:10,padding:"10px 14px",fontWeight:700,cursor:"pointer"}}>ไม่อนุมัติ</button>
+            <button onClick={()=>review(p,"approved")} disabled={busy===p.id} style={{border:"none",background:C.green,color:C.white,borderRadius:10,padding:"10px 14px",fontWeight:700,cursor:"pointer"}}>อนุมัติ</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={box}>
+        <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💰 ค่าเทอม</div>
+        <div style={{fontSize:13,color:C.g600,marginTop:3}}>{studentInfo?.full_name}</div>
+      </div>
+      {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
+      {invoices.length===0?<div style={box}><Empty icon="🧾" msg="ยังไม่มีใบแจ้งยอดค่าเทอม"/></div>:invoices.map(inv=>{
+        const invPayments=payments.filter(p=>p.invoice_id===inv.id);
+        return <div key={inv.id} style={box}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
+            <div><div style={{fontWeight:800,color:C.navy}}>{inv.fee_terms?.name||"ค่าเทอม"}</div>
+            <div style={{fontSize:12,color:C.g400}}>{inv.invoice_no} · ครบกำหนด {inv.due_date?new Date(inv.due_date+"T00:00:00").toLocaleDateString("th-TH"):"-"}</div></div>
+            {badge(inv.status)}
+          </div>
+          <div style={{marginTop:12,borderTop:`1px solid ${C.g100}`,paddingTop:8}}>
+            {(inv.invoice_items||[]).map(x=><div key={x.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{x.description}</span><b>{money(x.amount)}</b></div>)}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:16,paddingTop:8,marginTop:5,borderTop:`1px solid ${C.g200}`,color:C.navy}}><b>ยอดรวม</b><b>฿{money(inv.total_amount)}</b></div>
+          </div>
+          {invPayments.map(p=>{const receipt=receipts.find(r=>r.payment_id===p.id);return <div key={p.id} style={{marginTop:10,background:C.g50,borderRadius:10,padding:10,fontSize:12}}>
+            <div style={{display:"flex",justifyContent:"space-between"}}><span>แจ้งชำระ ฿{money(p.amount)}</span>{badge(p.status)}</div>
+            {p.review_note&&<div style={{color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
+            {receipt&&<div style={{color:C.green,fontWeight:700,marginTop:4}}>ใบเสร็จเลขที่ {receipt.receipt_no}</div>}
+          </div>;})}
+          {!["paid","cancelled"].includes(inv.status)&&<button onClick={()=>setForm({invoiceId:inv.id,amount:String(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount))),file:null})} style={{width:"100%",marginTop:12,border:"none",background:`linear-gradient(135deg,${C.gold},${C.goldL})`,color:C.navyD,borderRadius:10,padding:11,fontWeight:800,cursor:"pointer"}}>แจ้งชำระเงิน</button>}
+        </div>;
+      })}
+      {form.invoiceId&&<div style={box}>
+        <div style={{fontWeight:800,color:C.navy,marginBottom:10}}>แนบหลักฐานการชำระ</div>
+        <input type="number" min="0" step="0.01" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="จำนวนเงิน" style={{width:"100%",padding:11,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,marginBottom:9}}/>
+        <input type="file" accept="image/*" onChange={e=>setForm(p=>({...p,file:e.target.files?.[0]||null}))} style={{width:"100%",padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:13,marginBottom:9}}/>
+        <div style={{fontSize:11,color:C.g400,marginBottom:10}}>รองรับไฟล์รูปภาพ ขนาดไม่เกิน 5 MB</div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setForm({invoiceId:"",amount:"",file:null})} style={{flex:1,border:"none",background:C.g100,color:C.g600,borderRadius:10,padding:11,fontWeight:700}}>ยกเลิก</button>
+          <button onClick={submitPayment} disabled={busy==="submit"} style={{flex:2,border:"none",background:busy==="submit"?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800}}>{busy==="submit"?"กำลังส่ง...":"ส่งสลิปให้ตรวจสอบ"}</button>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
 // ======= STUDENT HOME VIEW =======
 function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const [data,setData]=useState({att:[],grades:[],ann:[]});const [loading,setLoading]=useState(true);
@@ -344,7 +563,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     {id:"grade",icon:"📊",label:"ผลการเรียน",bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
     {id:"exam",icon:"📋",label:"ผลสอบ",bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
-    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>window.open(TUITION_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:"แจ้งลาเรียน",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
     {id:"msg",icon:"💬",label:"ข้อความ",bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
   ];
@@ -407,9 +626,9 @@ function TeacherHomeView({token,profile,setPage}){
     {id:"ann",icon:"📢",label:"ประกาศ",bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
     {id:"leave",icon:"📝",label:"รับใบลา",bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"exam",icon:"📋",label:"ผลสอบ",bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
-    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>window.open(TUITION_URL,"_blank")},
+    {id:"tuition",icon:"💰",label:"ค่าเทอม",bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
     {id:"msg",icon:"💬",label:"ข้อความ",bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
-    {id:"import",icon:"📥",label:"นำเข้านักเรียน",bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>window.open("/import.html","_self")},
+    {id:"import",icon:"📥",label:"นำเข้านักเรียน",bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>window.open("./import.html","_self")},
   ];
   if(loading)return <Spin/>;
   return(
@@ -499,8 +718,8 @@ function ParentView({token,profile,userId}){
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
   if(page==="messages")return <div><Back/><Messages token={token} profile={profile}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name}/></div>;
+  if(page==="tuition")return <div><Back/><TuitionView token={token} profile={profile} student={sel}/></div>;
   if(page==="exam"){window.open(EXAM_URL,"_blank");setPage("home");}
-  if(page==="tuition"){window.open(TUITION_URL,"_blank");setPage("home");}
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
@@ -555,7 +774,7 @@ function App(){
   const hasDualRole=rawRole==="teacher_parent";
 
   // Bottom tabs
-  const tabs=role==="teacher"
+  const tabs=["teacher","finance","admin"].includes(role)
     ?[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"scan",icon:"📷",label:"สแกน"},{id:"announce",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"},{id:"settings",icon:"⚙️",label:"ตั้งค่า"}]
     :[{id:"home",icon:"🏠",label:"หน้าหลัก"},{id:"announce",icon:"📢",label:"ประกาศ"},{id:"messages",icon:"💬",label:"ข้อความ"},{id:"settings",icon:"⚙️",label:"ตั้งค่า"}];
 
@@ -572,6 +791,7 @@ function App(){
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={[]}/></div>;
+      if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
     }
     // tabs
     if(tab==="announce")return <Announce token={token} profile={profile}/>;
@@ -588,14 +808,14 @@ function App(){
       </div>
     );
     if(tab==="home"){
-      if(role==="teacher")return <TeacherHomeView token={token} profile={profile} setPage={goPage}/>;
+      if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage}/>;
       if(role==="parent")return <ParentView token={token} profile={profile} userId={session?.user?.id}/>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
     return null;
   }
 
-  const rl={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง",teacher_parent:"ครู/ผู้ปกครอง"};
+  const rl={teacher:"ครู",student:"นักเรียน",parent:"ผู้ปกครอง",teacher_parent:"ครู/ผู้ปกครอง",finance:"ฝ่ายการเงิน",admin:"ผู้ดูแลระบบ"};
 
   return(
     <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",background:C.bg,fontFamily:"'Sarabun','Segoe UI',sans-serif",paddingBottom:72}}>
