@@ -341,7 +341,9 @@ function Messages({token,profile}){
 // ======= TUITION PHASE 1 =======
 function TuitionView({token,profile,student}){
   const isStaff=["finance","admin"].includes(profile?.role);
+  const isTeacher=!student&&["teacher","teacher_parent"].includes(profile?.role);
   const [studentInfo,setStudentInfo]=useState(student||null);
+  const [teacherClasses,setTeacherClasses]=useState([]);
   const [invoices,setInvoices]=useState([]);
   const [payments,setPayments]=useState([]);
   const [receipts,setReceipts]=useState([]);
@@ -371,6 +373,16 @@ function TuitionView({token,profile,student}){
         ]);
         setPayments(p||[]);
         setTerms(t||[]);setClasses(c||[]);
+      }else if(isTeacher){
+        const links=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id,classes(id,name)`,{token});
+        const classIds=(links||[]).map(x=>x.class_id);
+        setTeacherClasses((links||[]).map(x=>x.classes).filter(Boolean));
+        if(!classIds.length){setInvoices([]);setError("ยังไม่ได้ผูกครูประจำชั้นกับห้องเรียน");return;}
+        const students=await sbFetch(`students?class_id=in.(${classIds.join(",")})&select=id&order=student_no.asc`,{token});
+        const studentIds=(students||[]).map(x=>x.id);
+        if(!studentIds.length){setInvoices([]);return;}
+        const inv=await sbFetch(`student_invoices?student_id=in.(${studentIds.join(",")})&select=*,fee_terms(name,academic_year,term_no),students(full_name,student_no,classes(name))&order=created_at.desc`,{token});
+        setInvoices(inv||[]);
       }else{
         let s=studentInfo;
         if(!s){
@@ -393,7 +405,7 @@ function TuitionView({token,profile,student}){
       }
     }catch(e){setError(e.message||"โหลดข้อมูลค่าเทอมไม่สำเร็จ");}
     finally{setLoading(false);}
-  },[token,profile.id,isStaff,studentInfo?.id]);
+  },[token,profile.id,isStaff,isTeacher,studentInfo?.id]);
   useEffect(()=>{load();},[load]);
 
   async function submitPayment(){
@@ -496,6 +508,43 @@ function TuitionView({token,profile,student}){
       ))}
     </div>
   );
+
+  if(isTeacher){
+    const counts={unpaid:0,pending:0,paid:0};
+    invoices.forEach(x=>{if(counts[x.status]!==undefined)counts[x.status]++;});
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={box}>
+          <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💰 สถานะค่าเทอมห้องประจำชั้น</div>
+          <div style={{fontSize:12,color:C.g400,marginTop:3}}>{teacherClasses.map(x=>x.name).join(", ")||"-"}</div>
+        </div>
+        {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+          {[
+            {label:"ค้างชำระ",value:counts.unpaid,color:C.red,bg:C.redL},
+            {label:"รอตรวจ",value:counts.pending,color:C.yellow,bg:C.yellowL},
+            {label:"ชำระแล้ว",value:counts.paid,color:C.green,bg:C.greenL}
+          ].map(x=><div key={x.label} style={{background:x.bg,borderRadius:12,padding:"12px 6px",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:x.color}}>{x.value}</div><div style={{fontSize:11,fontWeight:700,color:x.color}}>{x.label}</div></div>)}
+        </div>
+        {invoices.length===0?<div style={box}><Empty icon="🧾" msg="ฝ่ายการเงินยังไม่ได้สร้างใบแจ้งยอดสำหรับห้องนี้"/></div>:invoices.map(inv=>(
+          <div key={inv.id} style={box}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+              <div>
+                <div style={{fontWeight:800,color:C.navy}}>{inv.students?.full_name}</div>
+                <div style={{fontSize:12,color:C.g400}}>{inv.students?.classes?.name} · เลขที่ {inv.students?.student_no||"-"}</div>
+              </div>
+              {badge(inv.status)}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:9,borderTop:`1px solid ${C.g100}`,fontSize:13}}>
+              <span>{inv.fee_terms?.name||inv.invoice_no}</span>
+              <b style={{color:C.navy}}>฿{money(inv.total_amount)}</b>
+            </div>
+          </div>
+        ))}
+        <div style={{background:C.goldP,color:C.yellow,borderRadius:10,padding:11,fontSize:12,fontWeight:700}}>ครูประจำชั้นดูสถานะได้เท่านั้น การสร้างใบแจ้งยอดและอนุมัติสลิปเป็นสิทธิ์ฝ่ายการเงินหรือผู้ดูแลระบบ</div>
+      </div>
+    );
+  }
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
