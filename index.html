@@ -66,6 +66,16 @@ async function getPaymentSlipUrl(path,token){
   if(!res.ok)throw new Error(d.message||"เปิดสลิปไม่สำเร็จ");
   return `${SUPABASE_URL}/storage/v1${d.signedURL}`;
 }
+async function notifyTelegramPayment(paymentId,token){
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/notify-payment`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+    body:JSON.stringify({paymentId}),
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.error||"ส่งข้อความ Telegram ไม่สำเร็จ");
+  return d;
+}
 
 const C={
   navy:"#1a3a6b",navyD:"#0f2347",navyL:"#2a5298",
@@ -428,10 +438,18 @@ function TuitionView({token,profile,student}){
       const ext=(form.file.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
       const path=`${profile.id}/${invoice.id}/${Date.now()}.${ext}`;
       await uploadPaymentSlip(form.file,path,token);
-      await sbFetch("payments",{method:"POST",token,body:JSON.stringify({
+      const created=await sbFetch("payments",{method:"POST",token,body:JSON.stringify({
         invoice_id:invoice.id,parent_id:profile.id,amount:Number(form.amount),
         method:"bank_transfer",paid_at:new Date().toISOString(),slip_path:path,status:"pending"
       })});
+      const payment=created?.[0];
+      if(payment){
+        try{
+          await notifyTelegramPayment(payment.id,token);
+        }catch(e){
+          setError(`ส่งสลิปแล้ว แต่แจ้ง Telegram ไม่สำเร็จ: ${e.message}`);
+        }
+      }
       setForm({invoiceId:"",amount:"",file:null});await load();
     }catch(e){setError(e.message);}
     finally{setBusy("");}
