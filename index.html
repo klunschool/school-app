@@ -772,7 +772,6 @@ function TeacherHomeView({token,profile,setPage}){
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
     {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
-    {id:"import",icon:"📥",label:tx("นำเข้านักเรียน","Import students"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>window.open("./import.html","_self")},
   ];
   if(loading)return <Spin/>;
   return(
