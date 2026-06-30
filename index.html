@@ -184,33 +184,112 @@ function AttendHist({token,studentId,studentName}){
 // ======= LEAVE REQUEST =======
 function LeaveForm({token,profile,initStudents=[]}){
   const [stu,setStu]=useState(initStudents);
+  const [requests,setRequests]=useState([]);
   const [form,setForm]=useState({student_id:"",date:new Date().toISOString().split("T")[0],type:"sick",reason:""});
   const [saving,setSaving]=useState(false);const [done,setDone]=useState(false);
+  const loadRequests=useCallback(()=>{
+    sbFetch("leave_requests?select=*,students(full_name,student_no,classes(name))&order=created_at.desc",{token})
+      .then(r=>setRequests(r||[])).catch(()=>{});
+  },[token]);
   useEffect(()=>{
-    if(profile?.role==="parent"){
+    if(["parent","teacher_parent"].includes(profile?.role)){
       sbFetch(`parent_student?parent_id=eq.${profile.id}&select=student_id,students(id,full_name,student_no)`,{token})
         .then(r=>setStu((r||[]).map(x=>x.students))).catch(()=>{});
     }
-  },[token,profile]);
+    loadRequests();
+  },[token,profile,loadRequests]);
   async function submit(){
     if(!form.student_id||!form.reason){alert("กรุณากรอกข้อมูลให้ครบ");return;}
     setSaving(true);
     try{
-      await sbFetch("attendance",{method:"POST",token,headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({student_id:parseInt(form.student_id),date:form.date,status:"leave"})});
-      setDone(true);setTimeout(()=>{setDone(false);setForm({student_id:"",date:new Date().toISOString().split("T")[0],type:"sick",reason:""});},3000);
+      await sbFetch("leave_requests",{method:"POST",token,body:JSON.stringify({
+        student_id:parseInt(form.student_id),parent_id:profile.id,leave_date:form.date,
+        leave_type:form.type,reason:form.reason.trim(),status:"pending"
+      })});
+      setDone(true);setForm({student_id:"",date:new Date().toISOString().split("T")[0],type:"sick",reason:""});loadRequests();setTimeout(()=>setDone(false),3000);
     }catch(e){alert(e.message);}finally{setSaving(false);}
   }
   const s={width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white,outline:"none"};
-  if(done)return(<div style={{background:C.white,borderRadius:16,padding:32,textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}><div style={{fontSize:52}}>✅</div><div style={{fontSize:18,fontWeight:700,color:C.green,marginTop:12}}>แจ้งลาสำเร็จ!</div></div>);
+  const typeLabel={sick:tx("ลาป่วย","Sick leave"),personal:tx("ลากิจ","Personal leave"),other:tx("อื่นๆ","Other")};
+  const statusInfo={
+    pending:{label:tx("รอตรวจสอบ","Pending"),color:C.yellow,bg:C.yellowL},
+    approved:{label:tx("อนุมัติแล้ว","Approved"),color:C.green,bg:C.greenL},
+    rejected:{label:tx("ไม่อนุมัติ","Rejected"),color:C.red,bg:C.redL}
+  };
   return(
-    <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-      <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:14}}>📝 แจ้งลาเรียน</div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <select style={s} value={form.student_id} onChange={e=>setForm(p=>({...p,student_id:e.target.value}))}><option value="">เลือกนักเรียน</option>{stu.map(x=><option key={x.id} value={x.id}>{x.full_name} (เลขที่ {x.student_no})</option>)}</select>
-        <select style={s} value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}><option value="sick">🤒 ลาป่วย</option><option value="personal">📋 ลากิจ</option><option value="other">📌 อื่นๆ</option></select>
-        <input type="date" style={s} value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
-        <textarea style={{...s,minHeight:72,resize:"vertical",fontFamily:"inherit"}} placeholder="เหตุผลการลา *" value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}/>
-        <button onClick={submit} disabled={saving} style={{background:saving?C.g400:`linear-gradient(135deg,${C.navy},${C.navyL})`,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer"}}>{saving?"กำลังส่ง...":"📤 ส่งใบลา"}</button>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {done&&<div style={{background:C.greenL,color:C.green,borderRadius:12,padding:12,textAlign:"center",fontWeight:800}}>✅ {tx("ส่งใบลาสำเร็จ","Leave request submitted")}</div>}
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:14}}>📝 {tx("แจ้งลาเรียน","Request leave")}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <select style={s} value={form.student_id} onChange={e=>setForm(p=>({...p,student_id:e.target.value}))}><option value="">{tx("เลือกนักเรียน","Select student")}</option>{stu.map(x=><option key={x.id} value={x.id}>{x.full_name} ({tx("เลขที่","No.")} {x.student_no})</option>)}</select>
+          <select style={s} value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}><option value="sick">🤒 {tx("ลาป่วย","Sick leave")}</option><option value="personal">📋 {tx("ลากิจ","Personal leave")}</option><option value="other">📌 {tx("อื่นๆ","Other")}</option></select>
+          <input type="date" style={s} value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}/>
+          <textarea style={{...s,minHeight:72,resize:"vertical",fontFamily:"inherit"}} placeholder={tx("เหตุผลการลา *","Reason *")} value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}/>
+          <button onClick={submit} disabled={saving} style={{background:saving?C.g400:`linear-gradient(135deg,${C.navy},${C.navyL})`,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:saving?"wait":"pointer"}}>{saving?tx("กำลังส่ง...","Submitting..."):tx("📤 ส่งใบลา","📤 Submit leave request")}</button>
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:10}}>📋 {tx("ประวัติการลา","Leave history")}</div>
+        {requests.length===0?<Empty icon="📭" msg={tx("ยังไม่มีใบลา","No leave requests")}/>:requests.map((r,i)=>{
+          const st=statusInfo[r.status]||statusInfo.pending;
+          return <div key={r.id} style={{padding:"11px 0",borderBottom:i<requests.length-1?`1px solid ${C.g100}`:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+              <div><div style={{fontWeight:700,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>{r.students?.classes?.name||"-"} · {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div></div>
+              <span style={{alignSelf:"flex-start",background:st.bg,color:st.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>{st.label}</span>
+            </div>
+            <div style={{fontSize:13,color:C.g600,marginTop:5}}>{typeLabel[r.leave_type]} · {r.reason}</div>
+          </div>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LeaveRequestsView({token,profile}){
+  const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState("");
+  const [filter,setFilter]=useState("pending");
+  const canReview=["teacher","teacher_parent","admin"].includes(profile?.role);
+  const load=useCallback(()=>{
+    setLoading(true);
+    sbFetch("leave_requests?select=*,students(full_name,student_no,classes(name))&order=created_at.desc",{token})
+      .then(r=>setList((r||[]).sort((a,b)=>(a.status==="pending"?-1:1)-(b.status==="pending"?-1:1))))
+      .catch(e=>alert(e.message)).finally(()=>setLoading(false));
+  },[token]);
+  useEffect(()=>{load();},[load]);
+  async function review(item,status){
+    setBusy(item.id);
+    try{
+      await sbFetch(`leave_requests?id=eq.${item.id}`,{method:"PATCH",token,body:JSON.stringify({status,reviewed_by:profile.id,reviewed_at:new Date().toISOString()})});
+      load();
+    }catch(e){alert(e.message);}finally{setBusy("");}
+  }
+  const shown=filter==="all"?list:list.filter(x=>x.status===filter);
+  const typeLabel={sick:tx("ลาป่วย","Sick leave"),personal:tx("ลากิจ","Personal leave"),other:tx("อื่นๆ","Other")};
+  const statusInfo={pending:{label:tx("รอตรวจสอบ","Pending"),color:C.yellow,bg:C.yellowL},approved:{label:tx("อนุมัติแล้ว","Approved"),color:C.green,bg:C.greenL},rejected:{label:tx("ไม่อนุมัติ","Rejected"),color:C.red,bg:C.redL}};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.navy,marginBottom:12}}>📝 {tx("ใบลานักเรียน","Student leave requests")}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+          {[["pending",tx("รอตรวจ","Pending")],["approved",tx("อนุมัติ","Approved")],["rejected",tx("ไม่อนุมัติ","Rejected")],["all",tx("ทั้งหมด","All")]].map(([v,l])=><button key={v} onClick={()=>setFilter(v)} style={{border:"none",borderRadius:9,padding:"8px 4px",background:filter===v?C.navy:C.g100,color:filter===v?C.white:C.g600,fontSize:11,fontWeight:800,cursor:"pointer"}}>{l}</button>)}
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        {loading?<Spin/>:shown.length===0?<Empty icon="📭" msg={tx("ไม่มีใบลาในรายการนี้","No requests in this list")}/>:shown.map((r,i)=>{
+          const st=statusInfo[r.status]||statusInfo.pending;
+          return <div key={r.id} style={{padding:"13px 0",borderBottom:i<shown.length-1?`1px solid ${C.g100}`:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+              <div><div style={{fontWeight:800,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>{r.students?.classes?.name||"-"} · {tx("เลขที่","No.")} {r.students?.student_no||"-"} · {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div></div>
+              <span style={{alignSelf:"flex-start",background:st.bg,color:st.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>{st.label}</span>
+            </div>
+            <div style={{background:C.g50,borderRadius:9,padding:"9px 10px",fontSize:13,color:C.g700,marginTop:8}}><b>{typeLabel[r.leave_type]}</b><br/>{r.reason}</div>
+            {r.status==="pending"&&canReview&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:9}}>
+              <button disabled={busy===r.id} onClick={()=>review(r,"rejected")} style={{border:`1.5px solid ${C.red}`,borderRadius:9,padding:9,background:C.redL,color:C.red,fontWeight:800,cursor:"pointer"}}>{tx("ไม่อนุมัติ","Reject")}</button>
+              <button disabled={busy===r.id} onClick={()=>review(r,"approved")} style={{border:`1.5px solid ${C.green}`,borderRadius:9,padding:9,background:C.greenL,color:C.green,fontWeight:800,cursor:"pointer"}}>{tx("อนุมัติ","Approve")}</button>
+            </div>}
+          </div>;
+        })}
       </div>
     </div>
   );
@@ -988,7 +1067,7 @@ function App(){
       if(subPage==="checkin")return <div><Back/><AttendHist token={token}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
-      if(subPage==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={[]}/></div>;
+      if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
     }
@@ -998,7 +1077,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.2.0","Version 1.2.0")}].map((x,i)=>(
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.3.0","Version 1.3.0")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
