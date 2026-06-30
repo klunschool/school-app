@@ -63,6 +63,9 @@ async function signUpParent(form){
   });
   const d=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(d.msg||d.error_description||d.message||tx("ลงทะเบียนไม่สำเร็จ","Registration failed"));
+  if(d.user&&Array.isArray(d.user.identities)&&d.user.identities.length===0){
+    throw new Error(tx("อีเมลนี้ลงทะเบียนแล้ว กรุณากลับไปเข้าสู่ระบบ แล้วเลือกเพิ่มบุตรหลาน","This email is already registered. Sign in and choose Add child."));
+  }
   return d;
 }
 async function lookupStudentForRegistration(studentIdNo){
@@ -1099,17 +1102,18 @@ function ParentLinkApprovals({token}){
 // ======= PARENT VIEW =======
 function ParentView({token,profile,userId}){
   const [children,setChildren]=useState([]);const [requests,setRequests]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
+  const [adding,setAdding]=useState(false);const [childIdNo,setChildIdNo]=useState("");const [addBusy,setAddBusy]=useState(false);const [addMsg,setAddMsg]=useState("");const [reloadKey,setReloadKey]=useState(0);
   useEffect(()=>{
     const load=async()=>{
       setLoading(true);setErr("");
       try{
         const parentId=userId||profile?.id;
+        const pending=await sbFetch("rpc/get_my_parent_link_requests",{method:"POST",token,body:"{}"}).catch(()=>[]);
+        setRequests(pending||[]);
         const links=await sbFetch(`parent_student?parent_id=eq.${parentId}&select=student_id`,{token});
         const ids=(links||[]).map(x=>x.student_id).filter(Boolean);
         if(ids.length===0){
           setChildren([]);
-          const pending=await sbFetch("rpc/get_my_parent_link_requests",{method:"POST",token,body:"{}"}).catch(()=>[]);
-          setRequests(pending||[]);
           return;
         }
         const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token});
@@ -1122,7 +1126,18 @@ function ParentView({token,profile,userId}){
       }finally{setLoading(false);}
     };
     load();
-  },[token,profile,userId]);
+  },[token,profile,userId,reloadKey]);
+  const addChild=async()=>{
+    setAddMsg("");
+    if(!/^\d{13}$/.test(childIdNo))return setAddMsg(tx("กรุณากรอกเลขประจำตัวนักเรียนให้ครบ 13 หลัก","Enter the student's complete 13-digit ID number."));
+    setAddBusy(true);
+    try{
+      const result=await sbFetch("rpc/submit_parent_link_request",{method:"POST",token,body:JSON.stringify({p_student_id_no:childIdNo})});
+      setAddMsg(result?.status==="approved"?tx("นักเรียนคนนี้ผูกกับบัญชีแล้ว","This student is already linked."):tx("ส่งคำขอแล้ว กรุณารอ Admin อนุมัติ","Request sent. Please wait for administrator approval."));
+      setChildIdNo("");setAdding(false);setReloadKey(k=>k+1);
+    }catch(e){setAddMsg(e.message||tx("ส่งคำขอไม่สำเร็จ","Could not send request."));}
+    finally{setAddBusy(false);}
+  };
   if(loading)return <Spin/>;
   if(!sel)return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1148,6 +1163,20 @@ function ParentView({token,profile,userId}){
             <div style={{marginLeft:"auto",color:C.gold,fontSize:20}}>›</div>
           </button>
         ))}
+        {children.length>0&&requests.filter(r=>r.status!=="approved").map(r=>(
+          <div key={r.request_id} style={{background:C.yellowL,borderRadius:10,padding:"10px 12px",marginTop:8}}>
+            <div style={{fontWeight:700,color:C.navy,fontSize:13}}>{r.student_name}</div>
+            <div style={{fontSize:12,color:r.status==="rejected"?C.red:C.yellow,fontWeight:700}}>{r.status==="rejected"?tx("ไม่ผ่านการอนุมัติ","Rejected"):tx("รอ Admin อนุมัติ","Awaiting administrator approval")}</div>
+          </div>
+        ))}
+        {adding?<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.g200}`}}>
+          <input value={childIdNo} onChange={e=>setChildIdNo(e.target.value.replace(/\D/g,"").slice(0,13))} inputMode="numeric" maxLength="13" placeholder={tx("เลขประจำตัวนักเรียน 13 หลัก","Student's 13-digit ID number")} style={{width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none"}}/>
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={()=>{setAdding(false);setAddMsg("");}} style={{flex:1,padding:10,border:`1px solid ${C.g200}`,borderRadius:9,background:C.white,color:C.g600,fontWeight:700}}>{tx("ยกเลิก","Cancel")}</button>
+            <button onClick={addChild} disabled={addBusy} style={{flex:1,padding:10,border:"none",borderRadius:9,background:C.navy,color:C.white,fontWeight:800,opacity:addBusy?0.7:1}}>{addBusy?tx("กำลังส่ง...","Sending..."):tx("ส่งคำขอ","Send request")}</button>
+          </div>
+        </div>:<button onClick={()=>setAdding(true)} style={{width:"100%",marginTop:12,padding:11,border:`1.5px solid ${C.navy}`,borderRadius:10,background:C.white,color:C.navy,fontWeight:800,cursor:"pointer"}}>＋ {tx("เพิ่มบุตรหลาน","Add child")}</button>}
+        {addMsg&&<div style={{marginTop:9,padding:"9px 11px",borderRadius:9,background:C.g100,color:C.g700,fontSize:12,fontWeight:700}}>{addMsg}</div>}
       </div>
     </div>
   );
