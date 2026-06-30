@@ -183,7 +183,7 @@ function ParentRegister({onBack}){
             <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10}}>
               <input style={inputStyle} value={form.full_name} onChange={e=>set("full_name",e.target.value)} placeholder={tx("ชื่อ-นามสกุลผู้ปกครอง","Parent full name")} autoComplete="name"/>
               <input style={inputStyle} type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder={tx("อีเมล","Email")} autoComplete="email"/>
-              <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\D/g,"").slice(0,13))} placeholder={tx("เลขบัตร 13 หลักของนักเรียน","Student's 13-digit ID number")} inputMode="numeric" maxLength="13"/>
+              <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\D/g,"").slice(0,13))} placeholder={tx("เลขประจำตัวนักเรียน 13 หลัก","Student's 13-digit ID number")} inputMode="numeric" maxLength="13"/>
               {studentLookup&&<div style={{padding:"9px 11px",borderRadius:9,background:C.g100,color:C.g600,fontSize:13}}>🔎 {tx("กำลังค้นหาข้อมูลนักเรียน...","Looking up student...")}</div>}
               {!studentLookup&&studentMatch?.found&&<div style={{padding:"10px 11px",borderRadius:9,background:C.greenL,color:C.green,fontSize:13,lineHeight:1.5}}>✅ <b>{studentMatch.full_name}</b><br/>{studentMatch.class_name||"-"} · {tx("เลขที่","No.")} {studentMatch.student_no||"-"}</div>}
               {!studentLookup&&studentMatch&&!studentMatch.found&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตร","Student not found. Check the ID number.")}</div>}
