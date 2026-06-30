@@ -957,7 +957,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
     {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
-  ];
+  ].filter(item=>!(isParent&&item.id==="exam"));
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {/* Profile banner */}
