@@ -66,6 +66,12 @@ async function signUpParent(form){
   if(!res.ok)throw new Error(d.msg||d.error_description||d.message||tx("ลงทะเบียนไม่สำเร็จ","Registration failed"));
   return d;
 }
+async function lookupStudentForRegistration(studentIdNo){
+  return sbFetch("rpc/lookup_student_for_registration",{
+    method:"POST",
+    body:JSON.stringify({p_student_id_no:studentIdNo})
+  });
+}
 async function claimParentFromMetadata(session){
   const meta=session?.user?.user_metadata||{};
   if(meta.registration_source!=="school_parent"||!meta.student_id_no||!meta.link_code)return;
@@ -129,11 +135,27 @@ function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 
 function ParentRegister({onBack}){
   const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",link_code:"",password:"",confirm:""});
   const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [sent,setSent]=useState(false);
+  const [studentMatch,setStudentMatch]=useState(null);const [studentLookup,setStudentLookup]=useState(false);
   const inputStyle={width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white,outline:"none"};
   const set=(key,value)=>setForm(p=>({...p,[key]:value}));
+  useEffect(()=>{
+    let cancelled=false;
+    const studentIdNo=form.student_id_no.trim();
+    setStudentMatch(null);
+    if(!/^\d{13}$/.test(studentIdNo)){setStudentLookup(false);return()=>{cancelled=true;};}
+    setStudentLookup(true);
+    lookupStudentForRegistration(studentIdNo)
+      .then(result=>{if(!cancelled)setStudentMatch(result||{found:false});})
+      .catch(()=>{if(!cancelled)setStudentMatch({found:false,error:true});})
+      .finally(()=>{if(!cancelled)setStudentLookup(false);});
+    return()=>{cancelled=true;};
+  },[form.student_id_no]);
   async function submit(e){
     e.preventDefault();setError("");
     if(Object.values(form).some(v=>!String(v).trim()))return setError(tx("กรุณากรอกข้อมูลให้ครบ","Please complete all fields"));
+    if(!/^\d{13}$/.test(form.student_id_no))return setError(tx("กรุณากรอกเลขบัตรนักเรียนให้ครบ 13 หลัก","Enter the student's complete 13-digit ID number"));
+    if(studentLookup)return setError(tx("กำลังตรวจสอบข้อมูลนักเรียน กรุณารอสักครู่","Checking student information. Please wait."));
+    if(!studentMatch?.found)return setError(tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตรอีกครั้ง","Student not found. Check the ID number."));
     if(form.password.length<8)return setError(tx("รหัสผ่านต้องมีอย่างน้อย 8 ตัว","Password must contain at least 8 characters"));
     if(form.password!==form.confirm)return setError(tx("ยืนยันรหัสผ่านไม่ตรงกัน","Passwords do not match"));
     setBusy(true);
@@ -161,7 +183,10 @@ function ParentRegister({onBack}){
             <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10}}>
               <input style={inputStyle} value={form.full_name} onChange={e=>set("full_name",e.target.value)} placeholder={tx("ชื่อ-นามสกุลผู้ปกครอง","Parent full name")} autoComplete="name"/>
               <input style={inputStyle} type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder={tx("อีเมล","Email")} autoComplete="email"/>
-              <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\s/g,""))} placeholder={tx("เลขประจำตัวนักเรียน","Student ID number")} inputMode="numeric"/>
+              <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\D/g,"").slice(0,13))} placeholder={tx("เลขบัตร 13 หลักของนักเรียน","Student's 13-digit ID number")} inputMode="numeric" maxLength="13"/>
+              {studentLookup&&<div style={{padding:"9px 11px",borderRadius:9,background:C.g100,color:C.g600,fontSize:13}}>🔎 {tx("กำลังค้นหาข้อมูลนักเรียน...","Looking up student...")}</div>}
+              {!studentLookup&&studentMatch?.found&&<div style={{padding:"10px 11px",borderRadius:9,background:C.greenL,color:C.green,fontSize:13,lineHeight:1.5}}>✅ <b>{studentMatch.full_name}</b><br/>{studentMatch.class_name||"-"} · {tx("เลขที่","No.")} {studentMatch.student_no||"-"}</div>}
+              {!studentLookup&&studentMatch&&!studentMatch.found&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตร","Student not found. Check the ID number.")}</div>}
               <input style={{...inputStyle,textTransform:"uppercase"}} value={form.link_code} onChange={e=>set("link_code",e.target.value.toUpperCase().replace(/\s/g,""))} placeholder={tx("รหัสเชื่อมบัญชีจากโรงเรียน","School link code")} autoCapitalize="characters"/>
               <input style={inputStyle} type="password" value={form.password} onChange={e=>set("password",e.target.value)} placeholder={tx("ตั้งรหัสผ่าน อย่างน้อย 8 ตัว","Create password, at least 8 characters")} autoComplete="new-password"/>
               <input style={inputStyle} type="password" value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder={tx("ยืนยันรหัสผ่าน","Confirm password")} autoComplete="new-password"/>

@@ -228,4 +228,45 @@ after insert on auth.users
 for each row
 execute function public.handle_parent_self_signup();
 
+create or replace function public.lookup_student_for_registration(p_student_id_no text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  student_row record;
+begin
+  if p_student_id_no is null
+     or p_student_id_no !~ '^[0-9]{13}$' then
+    return jsonb_build_object('found', false);
+  end if;
+
+  select
+    s.full_name,
+    s.student_no,
+    c.name as class_name
+  into student_row
+  from public.students s
+  left join public.classes c on c.id = s.class_id
+  where s.student_id_no = p_student_id_no
+  limit 1;
+
+  if student_row.full_name is null then
+    return jsonb_build_object('found', false);
+  end if;
+
+  return jsonb_build_object(
+    'found', true,
+    'full_name', student_row.full_name,
+    'student_no', student_row.student_no,
+    'class_name', student_row.class_name
+  );
+end;
+$$;
+
+revoke all on function public.lookup_student_for_registration(text) from public;
+grant execute on function public.lookup_student_for_registration(text) to anon, authenticated;
+
 notify pgrst, 'reload schema';
