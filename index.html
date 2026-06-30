@@ -416,10 +416,10 @@ function LeaveForm({token,profile,initStudents=[]}){
   );
 }
 
-function LeaveRequestsView({token,profile}){
+function LeaveRequestsView({token,profile,readOnly=false}){
   const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState("");
   const [filter,setFilter]=useState("pending");
-  const canReview=["teacher","teacher_parent","admin"].includes(profile?.role);
+  const canReview=!readOnly&&["teacher","teacher_parent","admin"].includes(profile?.role);
   const load=useCallback(()=>{
     setLoading(true);
     sbFetch("leave_requests?select=*,students(full_name,student_no,classes(name))&order=created_at.desc",{token})
@@ -1009,7 +1009,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
 }
 
 // ======= TEACHER HOME =======
-function TeacherHomeView({token,profile,setPage,role}){
+function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
   useEffect(()=>{
     const load=async()=>{
@@ -1022,7 +1022,8 @@ function TeacherHomeView({token,profile,setPage,role}){
       }catch(e){}finally{setLoading(false);}
     };load();
   },[token,profile.id]);
-  const menus=[
+  const isDirector=String(email||"").toLowerCase()==="director@klunschool.com";
+  let menus=[
     {id:"scan",icon:"📷",label:tx("สแกนเข้า-ออก","Scan in/out"),bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
     {id:"hist",icon:"📅",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>setPage("checkin")},
     {id:"att",icon:"✅",label:tx("เช็คชื่อ","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>setPage("attendance")},
@@ -1034,6 +1035,7 @@ function TeacherHomeView({token,profile,setPage,role}){
     {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
   ];
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
+  if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1071,7 +1073,7 @@ function TeacherHomeView({token,profile,setPage,role}){
 }
 
 // ======= PARENT LINK APPROVALS =======
-function ParentLinkApprovals({token}){
+function ParentLinkApprovals({token,readOnly=false}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState("");const [err,setErr]=useState("");
   const load=async()=>{
     setLoading(true);setErr("");
@@ -1107,7 +1109,7 @@ function ParentLinkApprovals({token}){
           <div style={{fontSize:12,color:C.g600,marginTop:3}}>{x.class_name||"-"} · เลขที่ {x.student_no||"-"} · {x.student_id_no}</div>
           <div style={{fontSize:13,color:C.g700,marginTop:10}}>ผู้ปกครอง: <b>{x.parent_name}</b></div>
           <div style={{fontSize:12,color:C.g400}}>{x.parent_email}</div>
-          {x.status==="pending"&&<div style={{display:"flex",gap:8,marginTop:12}}>
+          {x.status==="pending"&&!readOnly&&<div style={{display:"flex",gap:8,marginTop:12}}>
             <button disabled={!!busy} onClick={()=>review(x.request_id,"rejected")} style={{flex:1,padding:9,border:`1px solid ${C.red}`,borderRadius:9,background:C.redL,color:C.red,fontWeight:800}}>ไม่อนุมัติ</button>
             <button disabled={!!busy} onClick={()=>review(x.request_id,"approved")} style={{flex:1,padding:9,border:"none",borderRadius:9,background:C.green,color:C.white,fontWeight:800}}>อนุมัติ</button>
           </div>}
@@ -1332,6 +1334,7 @@ function App(){
   const rawRole=profile?.role;
   const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
   const hasDualRole=rawRole==="teacher_parent";
+  const isDirector=String(session?.user?.email||"").toLowerCase()==="director@klunschool.com";
 
   // Bottom tabs
   const tabs=["teacher","finance","admin"].includes(role)
@@ -1350,10 +1353,10 @@ function App(){
       if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role} email={session?.user?.email}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
-      if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile}/>}</div>;
+      if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
-      if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token}/></div>;
+      if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
     }
     // tabs
     if(tab==="announce")return <Announce token={token} profile={profile}/>;
@@ -1378,7 +1381,7 @@ function App(){
       </div>
     );
     if(tab==="home"){
-      if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role}/>;
+      if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role} email={session?.user?.email}/>;
       if(role==="parent")return <ParentView token={token} profile={profile} userId={session?.user?.id}/>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
