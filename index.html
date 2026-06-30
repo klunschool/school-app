@@ -82,7 +82,9 @@ async function submitParentRequestFromMetadata(session){
   })});
 }
 async function assertParentApproved(session,profile){
-  if(profile?.role!=="parent")return;
+  const isParentAccount=["parent","teacher_parent"].includes(profile?.role)||
+    session?.user?.user_metadata?.registration_source==="school_parent";
+  if(!isParentAccount)return;
   const links=await sbFetch(`parent_student?parent_id=eq.${session.user.id}&select=student_id&limit=1`,{token:session.access_token});
   if((links||[]).length>0)return;
   const requests=await sbFetch("rpc/get_my_parent_link_requests",{method:"POST",token:session.access_token,body:"{}"}).catch(()=>[]);
@@ -295,6 +297,9 @@ function AttendHist({token,studentId,studentName,role,email}){
           setLogs(rows||[]);
         }else if(!studentId&&role==="teacher"){
           const rows=await sbFetch("rpc/get_teacher_checkin_history",{method:"POST",token,body:JSON.stringify({p_date:date})});
+          setLogs(rows||[]);
+        }else if(!studentId&&canChooseClass){
+          const rows=await sbFetch("rpc/get_admin_checkin_history",{method:"POST",token,body:JSON.stringify({p_date:date,p_class_id:classId?Number(classId):null})});
           setLogs(rows||[]);
         }else{
           const p=studentId
@@ -1280,7 +1285,11 @@ function App(){
   useEffect(()=>{
     let cancelled=false;
     const check=async()=>{
-      if(!auth||auth.profile?.role!=="parent"){if(!cancelled)setCheckingParentAccess(false);return;}
+      const isParentAccount=auth&&(
+        ["parent","teacher_parent"].includes(auth.profile?.role)||
+        auth.session?.user?.user_metadata?.registration_source==="school_parent"
+      );
+      if(!isParentAccount){if(!cancelled)setCheckingParentAccess(false);return;}
       setCheckingParentAccess(true);
       try{
         const links=await sbFetch(`parent_student?parent_id=eq.${auth.session.user.id}&select=student_id&limit=1`,{token:auth.session.access_token});
@@ -1306,6 +1315,7 @@ function App(){
   if(!auth)return <Login onLogin={onLogin}/>;
   const {session,profile}=auth;
   const token=session?.access_token;
+  if(profile?.role==="student"&&session?.user?.user_metadata?.registration_source==="school_parent")profile.role="parent";
   const rawRole=profile?.role;
   const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
   const hasDualRole=rawRole==="teacher_parent";
