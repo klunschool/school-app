@@ -46,6 +46,16 @@ async function signIn(email,pw){
   const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
   const d=await res.json();if(!res.ok)throw new Error(d.error_description||"เข้าสู่ระบบไม่สำเร็จ");return d;
 }
+async function updatePassword(token,password){
+  const res=await fetch(`${SUPABASE_URL}/auth/v1/user`,{
+    method:"PUT",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+    body:JSON.stringify({password}),
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.msg||d.message||tx("เปลี่ยนรหัสผ่านไม่สำเร็จ","Could not change password"));
+  return d;
+}
 async function signOut(token){await fetch(`${SUPABASE_URL}/auth/v1/logout`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`}}).catch(()=>{});}
 async function uploadPaymentSlip(file,path,token){
   const res=await fetch(`${SUPABASE_URL}/storage/v1/object/payment-slips/${path}`,{
@@ -897,6 +907,50 @@ function AttendContent({token,studentId}){
   );
 }
 
+function ChangePasswordView({email,token,onChanged}){
+  const [form,setForm]=useState({current:"",next:"",confirm:""});
+  const [show,setShow]=useState({current:false,next:false,confirm:false});
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const fieldStyle={width:"100%",border:`1.5px solid ${C.g200}`,borderRadius:10,padding:"12px 44px 12px 12px",fontSize:15,outline:"none",background:C.white};
+  const setValue=(key,value)=>setForm(p=>({...p,[key]:value}));
+  const toggle=(key)=>setShow(p=>({...p,[key]:!p[key]}));
+  async function submit(e){
+    e.preventDefault();setError("");
+    if(!form.current||!form.next||!form.confirm)return setError(tx("กรุณากรอกข้อมูลให้ครบ","Please complete all fields"));
+    if(form.next.length<8)return setError(tx("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัว","New password must contain at least 8 characters"));
+    if(form.next!==form.confirm)return setError(tx("ยืนยันรหัสผ่านใหม่ไม่ตรงกัน","New passwords do not match"));
+    if(form.current===form.next)return setError(tx("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม","New password must differ from the current password"));
+    setBusy(true);
+    try{
+      await signIn(email,form.current);
+      await updatePassword(token,form.next);
+      window.alert(tx("เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่","Password changed. Please sign in again."));
+      onChanged();
+    }catch(err){setError(err.message||tx("เปลี่ยนรหัสผ่านไม่สำเร็จ","Could not change password"));}
+    finally{setBusy(false);}
+  }
+  const PasswordField=({field,label})=>(
+    <label style={{display:"block",marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:C.g700,marginBottom:6}}>{label}</div>
+      <div style={{position:"relative"}}>
+        <input type={show[field]?"text":"password"} value={form[field]} onChange={e=>setValue(field,e.target.value)} autoComplete={field==="current"?"current-password":"new-password"} style={fieldStyle}/>
+        <button type="button" onClick={()=>toggle(field)} aria-label={show[field]?tx("ซ่อนรหัสผ่าน","Hide password"):tx("แสดงรหัสผ่าน","Show password")} title={show[field]?tx("ซ่อนรหัสผ่าน","Hide password"):tx("แสดงรหัสผ่าน","Show password")} style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",width:36,height:36,border:"none",background:"transparent",fontSize:18,cursor:"pointer"}}>{show[field]?"🙈":"👁️"}</button>
+      </div>
+    </label>
+  );
+  return(
+    <form onSubmit={submit} style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+      <div style={{fontSize:17,fontWeight:800,color:C.navy,marginBottom:18}}>🔐 {tx("เปลี่ยนรหัสผ่าน","Change password")}</div>
+      <PasswordField field="current" label={tx("รหัสผ่านปัจจุบัน","Current password")}/>
+      <PasswordField field="next" label={tx("รหัสผ่านใหม่","New password")}/>
+      <PasswordField field="confirm" label={tx("ยืนยันรหัสผ่านใหม่","Confirm new password")}/>
+      {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:9,padding:"10px 12px",fontSize:13,fontWeight:600,marginBottom:14}}>{error}</div>}
+      <button disabled={busy} style={{width:"100%",padding:"12px",border:"none",borderRadius:11,background:C.navy,color:C.white,fontSize:15,fontWeight:800,cursor:busy?"wait":"pointer",opacity:busy?0.7:1}}>{busy?tx("กำลังเปลี่ยน...","Changing..."):tx("บันทึกรหัสผ่านใหม่","Save new password")}</button>
+    </form>
+  );
+}
+
 // ======= MAIN APP =======
 function App(){
   const [auth,setAuth]=useState(()=>{try{const s=localStorage.getItem("sch");return s?JSON.parse(s):null;}catch{return null;}});
@@ -936,6 +990,7 @@ function App(){
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={[]}/></div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
+      if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
     }
     // tabs
     if(tab==="announce")return <Announce token={token} profile={profile}/>;
@@ -943,8 +998,8 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.1.0","Version 1.1.0")}].map((x,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:"pointer"}}>
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.2.0","Version 1.2.0")}].map((x,i)=>(
+          <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
         ))}
