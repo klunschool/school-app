@@ -57,8 +57,7 @@ async function signUpParent(form){
       data:{
         full_name:form.full_name.trim(),
         registration_source:"school_parent",
-        student_id_no:form.student_id_no.trim(),
-        link_code:form.link_code.trim().toUpperCase()
+        student_id_no:form.student_id_no.trim()
       }
     })
   });
@@ -72,12 +71,11 @@ async function lookupStudentForRegistration(studentIdNo){
     body:JSON.stringify({p_student_id_no:studentIdNo})
   });
 }
-async function claimParentFromMetadata(session){
+async function submitParentRequestFromMetadata(session){
   const meta=session?.user?.user_metadata||{};
-  if(meta.registration_source!=="school_parent"||!meta.student_id_no||!meta.link_code)return;
-  await sbFetch("rpc/claim_parent_student",{method:"POST",token:session.access_token,body:JSON.stringify({
-    p_student_id_no:meta.student_id_no,
-    p_link_code:meta.link_code
+  if(meta.registration_source!=="school_parent"||!meta.student_id_no)return;
+  await sbFetch("rpc/submit_parent_link_request",{method:"POST",token:session.access_token,body:JSON.stringify({
+    p_student_id_no:meta.student_id_no
   })});
 }
 async function updatePassword(token,password){
@@ -133,7 +131,7 @@ function Spin(){return <div style={{display:"flex",justifyContent:"center",paddi
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
 
 function ParentRegister({onBack}){
-  const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",link_code:"",password:"",confirm:""});
+  const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
   const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [sent,setSent]=useState(false);
   const [studentMatch,setStudentMatch]=useState(null);const [studentLookup,setStudentLookup]=useState(false);
   const inputStyle={width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white,outline:"none"};
@@ -176,7 +174,7 @@ function ParentRegister({onBack}){
             <div style={{textAlign:"center",padding:"24px 8px"}}>
               <div style={{fontSize:50}}>📧</div>
               <div style={{fontSize:17,fontWeight:800,color:C.green,marginTop:10}}>{tx("ส่งอีเมลยืนยันแล้ว","Confirmation email sent")}</div>
-              <div style={{fontSize:13,color:C.g600,lineHeight:1.6,marginTop:8}}>{tx("กรุณาเปิดอีเมล กดลิงก์ยืนยัน แล้วกลับมาเข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ตั้งไว้ ระบบจะผูกบุตรหลานให้อัตโนมัติ","Open the email, confirm your address, then return and sign in. Your child will be linked automatically.")}</div>
+              <div style={{fontSize:13,color:C.g600,lineHeight:1.6,marginTop:8}}>{tx("กรุณาเปิดอีเมล กดลิงก์ยืนยัน แล้วกลับมาเข้าสู่ระบบ ระบบจะส่งคำขอให้ผู้ดูแลตรวจสอบก่อนผูกบัญชี","Open the email, confirm your address, then return and sign in. An administrator will review the link request.")}</div>
               <button onClick={onBack} style={{marginTop:18,width:"100%",padding:11,border:"none",borderRadius:10,background:C.navy,color:C.white,fontWeight:800,cursor:"pointer"}}>{tx("ไปหน้าเข้าสู่ระบบ","Go to sign in")}</button>
             </div>
           ):(
@@ -186,8 +184,8 @@ function ParentRegister({onBack}){
               <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\D/g,"").slice(0,13))} placeholder={tx("เลขประจำตัวนักเรียน 13 หลัก","Student's 13-digit ID number")} inputMode="numeric" maxLength="13"/>
               {studentLookup&&<div style={{padding:"9px 11px",borderRadius:9,background:C.g100,color:C.g600,fontSize:13}}>🔎 {tx("กำลังค้นหาข้อมูลนักเรียน...","Looking up student...")}</div>}
               {!studentLookup&&studentMatch?.found&&<div style={{padding:"10px 11px",borderRadius:9,background:C.greenL,color:C.green,fontSize:13,lineHeight:1.5}}>✅ <b>{studentMatch.full_name}</b><br/>{studentMatch.class_name||"-"} · {tx("เลขที่","No.")} {studentMatch.student_no||"-"}</div>}
-              {!studentLookup&&studentMatch&&!studentMatch.found&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตร","Student not found. Check the ID number.")}</div>}
-              <input style={{...inputStyle,textTransform:"uppercase"}} value={form.link_code} onChange={e=>set("link_code",e.target.value.toUpperCase().replace(/\s/g,""))} placeholder={tx("รหัสเชื่อมบัญชีจากโรงเรียน","School link code")} autoCapitalize="characters"/>
+              {!studentLookup&&studentMatch?.error&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ระบบค้นหานักเรียนยังไม่พร้อม กรุณาแจ้งผู้ดูแลระบบ","Student lookup is not ready. Please contact the administrator.")}</div>}
+              {!studentLookup&&studentMatch&&!studentMatch.found&&!studentMatch.error&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตร","Student not found. Check the ID number.")}</div>}
               <input style={inputStyle} type="password" value={form.password} onChange={e=>set("password",e.target.value)} placeholder={tx("ตั้งรหัสผ่าน อย่างน้อย 8 ตัว","Create password, at least 8 characters")} autoComplete="new-password"/>
               <input style={inputStyle} type="password" value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder={tx("ยืนยันรหัสผ่าน","Confirm password")} autoComplete="new-password"/>
               {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:9,padding:"9px 11px",fontSize:13,fontWeight:600}}>⚠️ {error}</div>}
@@ -207,7 +205,7 @@ function Login({onLogin}){
   async function go(){
     if(!email||!pw){setErr("กรุณากรอกอีเมลและรหัสผ่าน");return;}
     setLoading(true);setErr("");
-    try{const s=await signIn(email,pw);await claimParentFromMetadata(s);const [p]=await sbFetch(`profiles?id=eq.${s.user.id}&select=*`,{token:s.access_token});localStorage.setItem("sch",JSON.stringify({session:s,profile:p}));onLogin({session:s,profile:p});}
+    try{const s=await signIn(email,pw);await submitParentRequestFromMetadata(s);const [p]=await sbFetch(`profiles?id=eq.${s.user.id}&select=*`,{token:s.access_token});localStorage.setItem("sch",JSON.stringify({session:s,profile:p}));onLogin({session:s,profile:p});}
     catch(e){setErr(e.message);}finally{setLoading(false);}
   }
   if(register)return <ParentRegister onBack={()=>setRegister(false)}/>;
@@ -258,16 +256,27 @@ function Grid({items}){
 }
 
 // ======= ATTENDANCE HISTORY =======
-function AttendHist({token,studentId,studentName}){
+function AttendHist({token,studentId,studentName,role}){
   const [logs,setLogs]=useState([]);const [loading,setLoading]=useState(true);
   const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
   useEffect(()=>{
-    setLoading(true);
-    const p=studentId
-      ?`checkin_log?student_id=eq.${studentId}&scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`
-      :`checkin_log?scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`;
-    sbFetch(p,{token}).then(l=>setLogs(l||[])).finally(()=>setLoading(false));
-  },[token,studentId,date]);
+    const load=async()=>{
+      setLoading(true);
+      try{
+        if(!studentId&&role==="teacher"){
+          const rows=await sbFetch("rpc/get_teacher_checkin_history",{method:"POST",token,body:JSON.stringify({p_date:date})});
+          setLogs(rows||[]);
+        }else{
+          const p=studentId
+            ?`checkin_log?student_id=eq.${studentId}&scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`
+            :`checkin_log?scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`;
+          const rows=await sbFetch(p,{token});setLogs(rows||[]);
+        }
+      }catch(e){setLogs([]);}
+      finally{setLoading(false);}
+    };
+    load();
+  },[token,studentId,date,role]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
@@ -275,7 +284,7 @@ function AttendHist({token,studentId,studentName}){
         <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:15,outline:"none"}}/>
       </div>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>{studentName?`สแกนของ ${studentName}`:"ประวัติสแกนทั้งหมด"}</div>
+        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>{studentName?`สแกนของ ${studentName}`:role==="teacher"?"ประวัติสแกนห้องประจำชั้น":"ประวัติสแกนทั้งหมด"}</div>
         {loading?<Spin/>:logs.length===0?<Empty icon="📋" msg="ไม่มีข้อมูลในวันนี้"/>:logs.map((l,i)=>(
           <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<logs.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{width:40,height:40,borderRadius:99,background:l.type==="in"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{l.type==="in"?"🟢":"🔴"}</div>
@@ -945,7 +954,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
 }
 
 // ======= TEACHER HOME =======
-function TeacherHomeView({token,profile,setPage}){
+function TeacherHomeView({token,profile,setPage,role}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
   useEffect(()=>{
     const load=async()=>{
@@ -969,6 +978,7 @@ function TeacherHomeView({token,profile,setPage}){
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
     {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
   ];
+  if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
   if(loading)return <Spin/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1005,9 +1015,56 @@ function TeacherHomeView({token,profile,setPage}){
   );
 }
 
+// ======= PARENT LINK APPROVALS =======
+function ParentLinkApprovals({token}){
+  const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState("");const [err,setErr]=useState("");
+  const load=async()=>{
+    setLoading(true);setErr("");
+    try{const rows=await sbFetch("rpc/list_parent_link_requests",{method:"POST",token,body:"{}"});setItems(rows||[]);}
+    catch(e){setErr(e.message||"โหลดคำขอไม่สำเร็จ");}
+    finally{setLoading(false);}
+  };
+  useEffect(()=>{load();},[token]);
+  const review=async(id,decision)=>{
+    setBusy(id+decision);setErr("");
+    try{
+      await sbFetch("rpc/review_parent_link_request",{method:"POST",token,body:JSON.stringify({p_request_id:id,p_decision:decision})});
+      await load();
+    }catch(e){setErr(e.message||"บันทึกผลไม่สำเร็จ");}
+    finally{setBusy("");}
+  };
+  if(loading)return <Spin/>;
+  const label={pending:"รอตรวจ",approved:"อนุมัติแล้ว",rejected:"ไม่อนุมัติ"};
+  const color={pending:C.yellow,approved:C.green,rejected:C.red};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:16,fontWeight:800,color:C.navy}}>👪 คำขอผูกบัญชีผู้ปกครอง</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>ตรวจสอบข้อมูลก่อนอนุมัติให้เข้าถึงข้อมูลนักเรียน</div>
+      </div>
+      {err&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {err}</div>}
+      {items.length===0?<div style={{background:C.white,borderRadius:16}}><Empty icon="✅" msg="ไม่มีคำขอผูกบัญชี"/></div>:items.map(x=>(
+        <div key={x.request_id} style={{background:C.white,borderRadius:14,padding:15,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+            <div style={{fontWeight:800,color:C.navy,fontSize:14}}>{x.student_name}</div>
+            <span style={{color:color[x.status],fontSize:12,fontWeight:800}}>{label[x.status]||x.status}</span>
+          </div>
+          <div style={{fontSize:12,color:C.g600,marginTop:3}}>{x.class_name||"-"} · เลขที่ {x.student_no||"-"} · {x.student_id_no}</div>
+          <div style={{fontSize:13,color:C.g700,marginTop:10}}>ผู้ปกครอง: <b>{x.parent_name}</b></div>
+          <div style={{fontSize:12,color:C.g400}}>{x.parent_email}</div>
+          {x.status==="pending"&&<div style={{display:"flex",gap:8,marginTop:12}}>
+            <button disabled={!!busy} onClick={()=>review(x.request_id,"rejected")} style={{flex:1,padding:9,border:`1px solid ${C.red}`,borderRadius:9,background:C.redL,color:C.red,fontWeight:800}}>ไม่อนุมัติ</button>
+            <button disabled={!!busy} onClick={()=>review(x.request_id,"approved")} style={{flex:1,padding:9,border:"none",borderRadius:9,background:C.green,color:C.white,fontWeight:800}}>อนุมัติ</button>
+          </div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ======= PARENT VIEW =======
 function ParentView({token,profile,userId}){
-  const [children,setChildren]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
+  const [children,setChildren]=useState([]);const [requests,setRequests]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
   useEffect(()=>{
     const load=async()=>{
       setLoading(true);setErr("");
@@ -1015,7 +1072,12 @@ function ParentView({token,profile,userId}){
         const parentId=userId||profile?.id;
         const links=await sbFetch(`parent_student?parent_id=eq.${parentId}&select=student_id`,{token});
         const ids=(links||[]).map(x=>x.student_id).filter(Boolean);
-        if(ids.length===0){setChildren([]);setErr("ไม่พบข้อมูลการผูกผู้ปกครองกับนักเรียนใน parent_student");return;}
+        if(ids.length===0){
+          setChildren([]);
+          const pending=await sbFetch("rpc/get_my_parent_link_requests",{method:"POST",token,body:"{}"}).catch(()=>[]);
+          setRequests(pending||[]);
+          return;
+        }
         const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token});
         setChildren(k||[]);
         if((k||[]).length===0){setErr("พบการผูกแล้ว แต่ยังอ่านข้อมูลนักเรียนไม่ได้ กรุณาตรวจ RLS ของ students/classes");}
@@ -1039,7 +1101,13 @@ function ParentView({token,profile,userId}){
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>👶 เลือกบุตรหลาน</div>
         {err&&<div style={{background:C.redL,color:C.red,border:`1.5px solid ${C.red}`,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:700,marginBottom:10}}>{err}</div>}
-        {children.length===0?<Empty icon="👪" msg="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(c=>(
+        {children.length===0&&requests.length>0?requests.map(r=>(
+          <div key={r.request_id} style={{background:C.yellowL,borderRadius:12,padding:"13px 14px",marginBottom:8}}>
+            <div style={{fontWeight:800,color:C.navy,fontSize:14}}>{r.student_name}</div>
+            <div style={{fontSize:12,color:C.g600}}>{r.class_name||"-"} · เลขที่ {r.student_no||"-"}</div>
+            <div style={{fontSize:12,fontWeight:800,color:r.status==="rejected"?C.red:C.yellow,marginTop:5}}>{r.status==="rejected"?"ไม่ผ่านการอนุมัติ":"รอผู้ดูแลระบบอนุมัติ"}</div>
+          </div>
+        )):children.length===0?<Empty icon="👪" msg="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(c=>(
           <button key={c.id} onClick={()=>{setSel(c);setInfo(c);}} style={{width:"100%",textAlign:"left",background:C.g50,border:`1.5px solid ${C.g200}`,borderRadius:12,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
             <div style={{width:46,height:46,borderRadius:99,background:C.goldP,border:`2px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👧</div>
             <div><div style={{fontWeight:700,fontSize:15,color:C.navy}}>{c.full_name}</div><div style={{fontSize:12,color:C.g400}}>{c.classes?.name||"—"} · เลขที่ {c.student_no||"—"}</div></div>
@@ -1171,12 +1239,13 @@ function App(){
     // sub pages
     if(subPage){
       const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← {tx("กลับ","Back")}</button>;
-      if(subPage==="checkin")return <div><Back/><AttendHist token={token}/></div>;
+      if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
+      if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token}/></div>;
     }
     // tabs
     if(tab==="announce")return <Announce token={token} profile={profile}/>;
@@ -1184,7 +1253,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.4.0","Version 1.4.0")}].map((x,i)=>(
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.6.0","Version 1.6.0")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
@@ -1201,7 +1270,7 @@ function App(){
       </div>
     );
     if(tab==="home"){
-      if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage}/>;
+      if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role}/>;
       if(role==="parent")return <ParentView token={token} profile={profile} userId={session?.user?.id}/>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
