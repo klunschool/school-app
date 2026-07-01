@@ -153,6 +153,19 @@ const C={
 
 function Spin(){return <div style={{display:"flex",justifyContent:"center",padding:40}}><div style={{width:36,height:36,border:`3px solid ${C.g200}`,borderTopColor:C.navy,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>;}
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
+function formatThaiTime(value){
+  if(!value)return "-";
+  const raw=String(value);
+  const hasTimezone=/([zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const date=new Date(hasTimezone?raw:`${raw}Z`);
+  if(Number.isNaN(date.getTime()))return "-";
+  return date.toLocaleTimeString("th-TH",{
+    hour:"2-digit",
+    minute:"2-digit",
+    hour12:false,
+    timeZone:"Asia/Bangkok",
+  });
+}
 
 function ParentRegister({onBack}){
   const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
@@ -183,7 +196,8 @@ function ParentRegister({onBack}){
     setBusy(true);
     try{
       const existing=await checkExistingParentRegistration(form.email,form.student_id_no);
-      if(existing?.registered)throw new Error(tx("อีเมลนี้ลงทะเบียนผู้ปกครองแล้ว กรุณากลับไปเข้าสู่ระบบ หากต้องการเพิ่มลูกให้เลือกเมนูเพิ่มบุตรหลาน","This email is already registered as a parent. Sign in and use Add child if needed."));
+      if(existing?.student_claimed)throw new Error(tx("นักเรียนคนนี้ลงทะเบียนผู้ปกครองแล้ว","This student already has a registered parent."));
+      if(existing?.email_exists)throw new Error(tx("อีเมลนี้ลงทะเบียนผู้ปกครองแล้ว กรุณากลับไปเข้าสู่ระบบ หากต้องการเพิ่มลูกให้เลือกเมนูเพิ่มบุตรหลาน","This email is already registered as a parent. Sign in and use Add child if needed."));
       await signUpParent(form);setSent(true);
     }
     catch(e){setError(e.message);}
@@ -343,7 +357,7 @@ function AttendHist({token,studentId,studentName,role,email}){
           <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<logs.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{width:40,height:40,borderRadius:99,background:l.type==="in"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{l.type==="in"?"🟢":"🔴"}</div>
             <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{l.students?.full_name||"—"}</div><div style={{fontSize:12,color:C.g400}}>เลขที่ {l.students?.student_no||"—"}</div></div>
-            <div style={{textAlign:"right"}}><div style={{fontWeight:700,fontSize:13,color:l.type==="in"?C.green:C.red}}>{l.type==="in"?"เข้า":"ออก"}</div><div style={{fontSize:12,color:C.g400}}>{new Date(l.scanned_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div></div>
+            <div style={{textAlign:"right"}}><div style={{fontWeight:700,fontSize:13,color:l.type==="in"?C.green:C.red}}>{l.type==="in"?"เข้า":"ออก"}</div><div style={{fontSize:12,color:C.g400}}>{formatThaiTime(l.scanned_at)}</div></div>
           </div>
         ))}
       </div>
