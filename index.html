@@ -395,6 +395,7 @@ function AttendHist({token,studentId,studentName,role,email}){
   const [logs,setLogs]=useState([]);const [loading,setLoading]=useState(true);
   const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
   const [classes,setClasses]=useState([]);const [classId,setClassId]=useState("");
+  const [lastUpdated,setLastUpdated]=useState(null);
   const canChooseClass=role==="admin"||String(email||"").toLowerCase()==="director@klunschool.com";
   useEffect(()=>{
     if(!canChooseClass)return;
@@ -408,9 +409,8 @@ function AttendHist({token,studentId,studentName,role,email}){
       setClasses([...best.values()].sort((a,b)=>a.id-b.id));
     }).catch(()=>setClasses([]));
   },[token,canChooseClass]);
-  useEffect(()=>{
-    const load=async()=>{
-      setLoading(true);
+  const load=useCallback(async(silent=false)=>{
+      if(!silent)setLoading(true);
       try{
         if(studentId&&role==="parent"){
           const rows=await sbFetch("rpc/get_parent_student_checkin_history",{method:"POST",token,body:JSON.stringify({p_student_id:studentId,p_date:date})});
@@ -429,11 +429,15 @@ function AttendHist({token,studentId,studentName,role,email}){
               :`checkin_log?scanned_at=gte.${date}T00:00:00&scanned_at=lte.${date}T23:59:59&select=*,students(full_name,student_no)&order=scanned_at.asc`;
           const rows=await sbFetch(p,{token});setLogs(rows||[]);
         }
-      }catch(e){setLogs([]);}
-      finally{setLoading(false);}
-    };
+        setLastUpdated(new Date());
+      }catch(e){if(!silent)setLogs([]);}
+      finally{if(!silent)setLoading(false);}
+  },[token,studentId,date,role,classId,canChooseClass]);
+  useEffect(()=>{
     load();
-  },[token,studentId,date,role,classId]);
+    const timer=setInterval(()=>load(true),10000);
+    return()=>clearInterval(timer);
+  },[load]);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
@@ -445,7 +449,13 @@ function AttendHist({token,studentId,studentName,role,email}){
         </select>}
       </div>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>{studentName?`สแกนของ ${studentName}`:role==="teacher"?"ประวัติสแกนห้องประจำชั้น":"ประวัติสแกนทั้งหมด"}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:C.navy}}>{studentName?`สแกนของ ${studentName}`:role==="teacher"?"ประวัติสแกนห้องประจำชั้น":"ประวัติสแกนทั้งหมด"}</div>
+            <div style={{fontSize:11,color:C.g400,marginTop:2}}>● {tx("อัปเดตอัตโนมัติทุก 10 วินาที","Auto-updates every 10 seconds")}{lastUpdated?` · ${lastUpdated.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}`:""}</div>
+          </div>
+          <button onClick={()=>load()} title={tx("รีเฟรชข้อมูล","Refresh")} style={{width:34,height:34,borderRadius:9,border:`1px solid ${C.g200}`,background:C.g50,color:C.navy,fontSize:17,cursor:"pointer"}}>↻</button>
+        </div>
         {loading?<Spin/>:logs.length===0?<Empty icon="📋" msg="ไม่มีข้อมูลในวันนี้"/>:logs.map((l,i)=>(
           <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<logs.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{width:40,height:40,borderRadius:99,background:l.type==="in"?C.greenL:C.redL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{l.type==="in"?"🟢":"🔴"}</div>
