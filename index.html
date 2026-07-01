@@ -195,6 +195,17 @@ function formatThaiTime(value){
     timeZone:"Asia/Bangkok",
   });
 }
+function localDateISO(date=new Date()){
+  return new Intl.DateTimeFormat("en-CA",{
+    year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Bangkok"
+  }).format(date);
+}
+function attendanceRange(){
+  const end=new Date();
+  const start=new Date(end);
+  start.setDate(start.getDate()-41);
+  return {from:localDateISO(start),to:localDateISO(end)};
+}
 
 function ParentRegister({onBack}){
   const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
@@ -593,26 +604,15 @@ function LeaveRequestsView({token,profile,readOnly=false}){
 
 // ======= ATTENDANCE CHECK =======
 function AttendCheck({token,profile}){
-  const [students,setStudents]=useState([]);const [att,setAtt]=useState({});const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);const [saved,setSaved]=useState(false);
-  const today=new Date().toISOString().split("T")[0];
+  const [rows,setRows]=useState([]);const [loading,setLoading]=useState(true);
+  const today=localDateISO();
   useEffect(()=>{
-    const load=async()=>{
-      try{
-        let tc=[];try{tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});}catch(e){}
-        const a=await sbFetch(`attendance?date=eq.${today}&select=*`,{token}).catch(()=>[]);
-        const ids=tc?.length>0?tc.map(t=>t.class_id).join(","):null;
-        const stu=ids?await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]):await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
-        setStudents(stu||[]);const m={};(a||[]).forEach(x=>{m[x.student_id]=x.status;});setAtt(m);
-      }catch(e){}finally{setLoading(false);}
-    };load();
+    const load=()=>sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:null,p_date_from:today,p_date_to:today})})
+      .then(r=>setRows(r||[])).catch(()=>setRows([])).finally(()=>setLoading(false));
+    load();const timer=setInterval(load,10000);return()=>clearInterval(timer);
   },[token,profile.id,today]);
-  async function save(){
-    setSaving(true);
-    try{for(const [sid,status] of Object.entries(att)){await sbFetch("attendance",{method:"POST",token,headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({student_id:parseInt(sid),date:today,status})});} setSaved(true);setTimeout(()=>setSaved(false),2500);}
-    catch(e){alert(e.message);}finally{setSaving(false);}
-  }
   const opts=[{v:"present",l:"มา",c:C.green,bg:C.greenL},{v:"late",l:"สาย",c:C.yellow,bg:C.yellowL},{v:"absent",l:"ขาด",c:C.red,bg:C.redL},{v:"leave",l:"ลา",c:C.g600,bg:C.g100}];
-  const sum={present:0,late:0,absent:0,leave:0};Object.values(att).forEach(s=>{if(sum[s]!==undefined)sum[s]++;});
+  const sum={present:0,late:0,absent:0,leave:0};rows.forEach(r=>{if(sum[r.status]!==undefined)sum[r.status]++;});
   if(loading)return <Spin/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -621,17 +621,16 @@ function AttendCheck({token,profile}){
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{opts.map(o=><span key={o.v} style={{background:o.bg,color:o.c,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:700}}>{o.l} {sum[o.v]}</span>)}</div>
       </div>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        {students.length===0?<Empty icon="🏫" msg="ยังไม่มีนักเรียน"/>:students.map((s,i)=>(
-          <div key={s.id} style={{padding:"12px 0",borderBottom:i<students.length-1?`1px solid ${C.g100}`:"none"}}>
+        {rows.length===0?<Empty icon="🏫" msg="ยังไม่มีข้อมูลนักเรียน"/>:rows.map((s,i)=>{
+          const o=opts.find(x=>x.v===s.status)||opts[2];
+          return <div key={s.id} style={{padding:"12px 0",borderBottom:i<rows.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
               <div style={{width:30,height:30,borderRadius:99,background:C.goldP,color:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,border:`1.5px solid ${C.gold}`}}>{s.student_no||i+1}</div>
               <div style={{fontWeight:600,fontSize:14,color:C.g900,flex:1}}>{s.full_name}</div>
-              <div style={{fontSize:11,color:C.g400}}>{s.classes?.name}</div>
+              <span style={{background:o.bg,color:o.c,borderRadius:99,padding:"4px 10px",fontSize:12,fontWeight:800}}>{o.l}{s.scanned_time?` ${String(s.scanned_time).slice(0,5)}`:""}</span>
             </div>
-            <div style={{display:"flex",gap:5}}>{opts.map(o=><button key={o.v} onClick={()=>setAtt(p=>({...p,[s.id]:o.v}))} style={{border:"none",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:700,cursor:"pointer",background:att[s.id]===o.v?o.bg:C.g100,color:att[s.id]===o.v?o.c:C.g600,outline:att[s.id]===o.v?`2px solid ${o.c}`:"none"}}>{o.l}</button>)}</div>
           </div>
-        ))}
-        {students.length>0&&<button onClick={save} disabled={saving} style={{width:"100%",marginTop:14,padding:"12px",background:saved?C.green:saving?C.g400:`linear-gradient(135deg,${C.navy},${C.navyL})`,color:C.white,border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>{saved?"✅ บันทึกสำเร็จ!":saving?"กำลังบันทึก...":"💾 บันทึกเช็คชื่อ"}</button>}
+        })}
       </div>
     </div>
   );
@@ -1168,8 +1167,9 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       let sid=studentId;
       if(!sid){const s=await sbFetch(`students?profile_id=eq.${profile.id}&select=*`,{token}).catch(()=>[]);sid=s?.[0]?.id;}
       if(!sid){setLoading(false);return;}
+      const range=attendanceRange();
       const [a,g,n]=await Promise.all([
-        sbFetch(`attendance?student_id=eq.${sid}&select=*&order=date.desc&limit=30`,{token}).catch(()=>[]),
+        sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:sid,p_date_from:range.from,p_date_to:range.to})}).catch(()=>[]),
         sbFetch(`grades?student_id=eq.${sid}&select=*&order=created_at.desc`,{token}).catch(()=>[]),
         sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]),
       ]);
@@ -1178,7 +1178,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   },[token,profile,studentId]);
   if(loading)return <Spin/>;
   const sum={present:0,late:0,absent:0,leave:0};data.att.forEach(a=>{if(sum[a.status]!==undefined)sum[a.status]++;});
-  const pct=data.att.length>0?Math.round((sum.present/data.att.length)*100):0;
+  const pct=data.att.length>0?Math.round(((sum.present+sum.late)/data.att.length)*100):0;
   const isParent=["parent","teacher_parent"].includes(profile?.role);
   const displayName=isParent?(studentInfo?.full_name||profile?.full_name):(profile?.full_name||studentInfo?.full_name);
   const menus=[
@@ -1498,10 +1498,16 @@ function ParentView({token,profile,userId}){
 
 function AttendContent({token,studentId}){
   const [att,setAtt]=useState([]);const [loading,setLoading]=useState(true);
-  useEffect(()=>{sbFetch(`attendance?student_id=eq.${studentId}&select=*&order=date.desc&limit=30`,{token}).then(a=>setAtt(a||[])).finally(()=>setLoading(false));},[token,studentId]);
+  useEffect(()=>{
+    const load=()=>{
+      const range=attendanceRange();
+      return sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:studentId,p_date_from:range.from,p_date_to:range.to})}).then(a=>setAtt(a||[])).finally(()=>setLoading(false));
+    };
+    load();const timer=setInterval(load,10000);return()=>clearInterval(timer);
+  },[token,studentId]);
   if(loading)return <Spin/>;
   const sum={present:0,late:0,absent:0,leave:0};att.forEach(a=>{if(sum[a.status]!==undefined)sum[a.status]++;});
-  const pct=att.length>0?Math.round((sum.present/att.length)*100):0;
+  const pct=att.length>0?Math.round(((sum.present+sum.late)/att.length)*100):0;
   return(
     <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
