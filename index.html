@@ -122,6 +122,24 @@ async function uploadPaymentSlip(file,path,token){
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||"อัปโหลดสลิปไม่สำเร็จ");}
   return path;
 }
+async function uploadTeacherSchedule(file,path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/teacher-schedules/${path}`,{
+    method:"POST",
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${token}`,
+      "Content-Type":file.type||"image/jpeg",
+      "x-upsert":"true"
+    },
+    body:file,
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.message||tx("อัปโหลดตารางสอนไม่สำเร็จ","Could not upload timetable"));
+  return d;
+}
+function teacherSchedulePublicUrl(path){
+  return path?`${SUPABASE_URL}/storage/v1/object/public/teacher-schedules/${path}`:"";
+}
 async function getPaymentSlipUrl(path,token){
   const res=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/payment-slips/${path}`,{
     method:"POST",
@@ -520,6 +538,62 @@ function AttendCheck({token,profile}){
           </div>
         ))}
         {students.length>0&&<button onClick={save} disabled={saving} style={{width:"100%",marginTop:14,padding:"12px",background:saved?C.green:saving?C.g400:`linear-gradient(135deg,${C.navy},${C.navyL})`,color:C.white,border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}}>{saved?"✅ บันทึกสำเร็จ!":saving?"กำลังบันทึก...":"💾 บันทึกเช็คชื่อ"}</button>}
+      </div>
+    </div>
+  );
+}
+
+// ======= TEACHER TIMETABLE =======
+function TeacherSchedule({token,profile}){
+  const [row,setRow]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const load=useCallback(async()=>{
+    setLoading(true);setError("");
+    try{
+      const rows=await sbFetch(`teacher_schedules?teacher_id=eq.${profile.id}&select=*&limit=1`,{token});
+      setRow(rows?.[0]||null);
+    }catch(e){setError(e.message||tx("โหลดตารางสอนไม่สำเร็จ","Could not load timetable"));}
+    finally{setLoading(false);}
+  },[token,profile.id]);
+  useEffect(()=>{load();},[load]);
+  async function upload(e){
+    const file=e.target.files?.[0];
+    e.target.value="";
+    if(!file)return;
+    if(!file.type.startsWith("image/"))return setError(tx("กรุณาเลือกไฟล์รูปภาพเท่านั้น","Please select an image file"));
+    if(file.size>5*1024*1024)return setError(tx("รูปภาพต้องมีขนาดไม่เกิน 5 MB","The image must not exceed 5 MB"));
+    setBusy(true);setError("");
+    try{
+      const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
+      const path=`${profile.id}/schedule.${ext}`;
+      await uploadTeacherSchedule(file,path,token);
+      await sbFetch("teacher_schedules",{
+        method:"POST",
+        token,
+        headers:{Prefer:"resolution=merge-duplicates,return=representation"},
+        body:JSON.stringify({teacher_id:profile.id,image_path:path,updated_at:new Date().toISOString()})
+      });
+      await load();
+    }catch(e2){setError(e2.message||tx("บันทึกตารางสอนไม่สำเร็จ","Could not save timetable"));}
+    finally{setBusy(false);}
+  }
+  if(loading)return <Spin/>;
+  const imageUrl=row?.image_path?`${teacherSchedulePublicUrl(row.image_path)}?v=${encodeURIComponent(row.updated_at||"")}`:"";
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.navy}}>🗓️ {tx("ตารางสอน","Teaching timetable")}</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>{tx("อัปโหลดเป็นไฟล์รูปภาพ ขนาดไม่เกิน 5 MB","Upload an image up to 5 MB")}</div>
+        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:14,padding:12,borderRadius:10,background:busy?C.g400:C.navy,color:C.white,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+          📤 {busy?tx("กำลังอัปโหลด...","Uploading..."):row?tx("เปลี่ยนรูปตารางสอน","Replace timetable image"):tx("อัปโหลดตารางสอน","Upload timetable")}
+          <input type="file" accept="image/*" onChange={upload} disabled={busy} style={{display:"none"}}/>
+        </label>
+      </div>
+      {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {error}</div>}
+      <div style={{background:C.white,borderRadius:16,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        {imageUrl?<img src={imageUrl} alt={tx("รูปตารางสอน","Timetable")} style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>:<Empty icon="🗓️" msg={tx("ยังไม่มีรูปตารางสอน","No timetable image yet")}/>}
       </div>
     </div>
   );
@@ -1041,7 +1115,9 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"scan",icon:"📷",label:tx("สแกนเข้า-ออก","Scan in/out"),bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
     {id:"hist",icon:"📅",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>setPage("checkin")},
     {id:"att",icon:"✅",label:tx("เช็คชื่อ","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>setPage("attendance")},
-    {id:"grade",icon:"📊",label:tx("คะแนน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
+    role==="teacher"
+      ?{id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("schedule")}
+      :{id:"grade",icon:"📊",label:tx("คะแนน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
@@ -1086,9 +1162,40 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   );
 }
 
+function formatThaiDateTime(value){
+  if(!value)return "-";
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return "-";
+  return date.toLocaleString("th-TH",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Bangkok"});
+}
+function ParentAccountDetails({data}){
+  if(!data)return <div style={{padding:14}}><Spin/></div>;
+  if(data.error)return <div style={{marginTop:10,padding:10,borderRadius:9,background:C.redL,color:C.red,fontSize:12}}>⚠️ {data.error}</div>;
+  const history=Array.isArray(data.password_history)?data.password_history:[];
+  return(
+    <div style={{marginTop:10,padding:12,borderRadius:10,background:C.g50,border:`1px solid ${C.g200}`}}>
+      <div style={{fontSize:13,fontWeight:800,color:C.navy,marginBottom:8}}>{tx("รายละเอียดบัญชีผู้ปกครอง","Parent account details")}</div>
+      <div style={{fontSize:12,color:C.g700,lineHeight:1.8}}>
+        <div><b>{tx("รหัสบัญชี","Account ID")}:</b> <span style={{wordBreak:"break-all"}}>{data.user_id||"-"}</span></div>
+        <div><b>{tx("อีเมล","Email")}:</b> {data.email||"-"}</div>
+        <div><b>{tx("สร้างบัญชี","Account created")}:</b> {formatThaiDateTime(data.created_at)}</div>
+        <div><b>{tx("เข้าสู่ระบบล่าสุด","Last sign-in")}:</b> {formatThaiDateTime(data.last_sign_in_at)}</div>
+        <div><b>{tx("รหัสผ่าน","Password")}:</b> {tx("จัดเก็บแบบเข้ารหัส ไม่สามารถดูรหัสจริงได้","Encrypted; the actual password cannot be viewed")}</div>
+      </div>
+      <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:9}}>{tx("ประวัติการเปลี่ยนรหัส","Password change history")}</div>
+      {history.length===0
+        ?<div style={{fontSize:12,color:C.g400,marginTop:4}}>{tx("ยังไม่มีประวัติที่ระบบบันทึกไว้","No recorded history yet")}</div>
+        :history.map((h,i)=><div key={h.id||i} style={{fontSize:12,color:C.g600,padding:"5px 0",borderBottom:i<history.length-1?`1px solid ${C.g200}`:"none"}}>🔐 {formatThaiDateTime(h.changed_at)}</div>)}
+    </div>
+  );
+}
+
 // ======= PARENT LINK APPROVALS =======
 function ParentLinkApprovals({token,readOnly=false}){
   const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState("");const [err,setErr]=useState("");
+  const [classFilter,setClassFilter]=useState("");
+  const [expanded,setExpanded]=useState("");
+  const [accountDetails,setAccountDetails]=useState({});
   const load=async()=>{
     setLoading(true);setErr("");
     try{const rows=await sbFetch("rpc/list_parent_link_requests",{method:"POST",token,body:"{}"});setItems(rows||[]);}
@@ -1104,17 +1211,32 @@ function ParentLinkApprovals({token,readOnly=false}){
     }catch(e){setErr(e.message||"บันทึกผลไม่สำเร็จ");}
     finally{setBusy("");}
   };
+  const toggleDetails=async(x)=>{
+    if(expanded===x.request_id){setExpanded("");return;}
+    setExpanded(x.request_id);
+    if(accountDetails[x.parent_id])return;
+    try{
+      const detail=await sbFetch("rpc/get_parent_account_details",{method:"POST",token,body:JSON.stringify({p_parent_id:x.parent_id})});
+      setAccountDetails(p=>({...p,[x.parent_id]:detail}));
+    }catch(e){setAccountDetails(p=>({...p,[x.parent_id]:{error:e.message||tx("โหลดรายละเอียดไม่สำเร็จ","Could not load details")}}));}
+  };
   if(loading)return <Spin/>;
   const label={pending:"รอตรวจ",approved:"อนุมัติแล้ว",rejected:"ไม่อนุมัติ"};
   const color={pending:C.yellow,approved:C.green,rejected:C.red};
+  const classes=Array.from(new Map(items.filter(x=>x.class_id).map(x=>[String(x.class_id),x.class_name||"-"])).entries()).sort((a,b)=>a[1].localeCompare(b[1],"th"));
+  const visibleItems=classFilter?items.filter(x=>String(x.class_id)===classFilter):items;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:16,fontWeight:800,color:C.navy}}>👪 คำขอผูกบัญชีผู้ปกครอง</div>
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>ตรวจสอบข้อมูลก่อนอนุมัติให้เข้าถึงข้อมูลนักเรียน</div>
+        <select value={classFilter} onChange={e=>setClassFilter(e.target.value)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,color:C.navy,fontSize:14,fontWeight:700}}>
+          <option value="">{tx("ทุกห้อง","All classes")}</option>
+          {classes.map(([id,name])=><option key={id} value={id}>{name}</option>)}
+        </select>
       </div>
       {err&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {err}</div>}
-      {items.length===0?<div style={{background:C.white,borderRadius:16}}><Empty icon="✅" msg="ไม่มีคำขอผูกบัญชี"/></div>:items.map(x=>(
+      {visibleItems.length===0?<div style={{background:C.white,borderRadius:16}}><Empty icon="✅" msg={tx("ไม่มีคำขอในห้องที่เลือก","No requests in the selected class")}/></div>:visibleItems.map(x=>(
         <div key={x.request_id} style={{background:C.white,borderRadius:14,padding:15,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
             <div style={{fontWeight:800,color:C.navy,fontSize:14}}>{x.student_name}</div>
@@ -1123,6 +1245,11 @@ function ParentLinkApprovals({token,readOnly=false}){
           <div style={{fontSize:12,color:C.g600,marginTop:3}}>{x.class_name||"-"} · เลขที่ {x.student_no||"-"} · {x.student_id_no}</div>
           <div style={{fontSize:13,color:C.g700,marginTop:10}}>ผู้ปกครอง: <b>{x.parent_name}</b></div>
           <div style={{fontSize:12,color:C.g400}}>{x.parent_email}</div>
+          <div style={{fontSize:11,color:C.g400,marginTop:4}}>{tx("ส่งคำขอ","Requested")}: {formatThaiDateTime(x.requested_at)}{x.reviewed_at?` · ${tx("ตรวจเมื่อ","Reviewed")}: ${formatThaiDateTime(x.reviewed_at)}`:""}</div>
+          <button onClick={()=>toggleDetails(x)} style={{width:"100%",marginTop:10,padding:9,border:`1px solid ${C.g200}`,borderRadius:9,background:C.g50,color:C.navy,fontWeight:800,cursor:"pointer"}}>
+            {expanded===x.request_id?tx("ซ่อนรายละเอียดบัญชี","Hide account details"):tx("ดูรายละเอียดบัญชี","View account details")}
+          </button>
+          {expanded===x.request_id&&<ParentAccountDetails data={accountDetails[x.parent_id]}/>}
           {x.status==="pending"&&!readOnly&&<div style={{display:"flex",gap:8,marginTop:12}}>
             <button disabled={!!busy} onClick={()=>review(x.request_id,"rejected")} style={{flex:1,padding:9,border:`1px solid ${C.red}`,borderRadius:9,background:C.redL,color:C.red,fontWeight:800}}>ไม่อนุมัติ</button>
             <button disabled={!!busy} onClick={()=>review(x.request_id,"approved")} style={{flex:1,padding:9,border:"none",borderRadius:9,background:C.green,color:C.white,fontWeight:800}}>อนุมัติ</button>
@@ -1276,6 +1403,7 @@ function ChangePasswordView({email,token,onChanged}){
     try{
       await signIn(email,form.current);
       await updatePassword(token,form.next);
+      await sbFetch("rpc/log_my_password_change",{method:"POST",token,body:"{}"}).catch(()=>null);
       window.alert(tx("เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่","Password changed. Please sign in again."));
       onChanged();
     }catch(err){setError(err.message||tx("เปลี่ยนรหัสผ่านไม่สำเร็จ","Could not change password"));}
@@ -1366,6 +1494,7 @@ function App(){
       const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← {tx("กลับ","Back")}</button>;
       if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role} email={session?.user?.email}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
+      if(subPage==="schedule"&&role==="teacher")return <div><Back/><TeacherSchedule token={token} profile={profile}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
@@ -1378,7 +1507,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.6.0","Version 1.6.0")}].map((x,i)=>(
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.0","Version 1.7.0")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
