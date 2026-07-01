@@ -1192,7 +1192,6 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
-    {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>onPageChange("messages")},
   ].filter(item=>!(isParent&&item.id==="exam"));
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1257,7 +1256,6 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
-    {id:"msg",icon:"💬",label:tx("ข้อความ","Messages"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",action:()=>setPage("messages")},
   ];
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
@@ -1483,7 +1481,6 @@ function ParentView({token,profile,userId}){
   if(page==="grades")return <div><Back/><Grades token={token} isTeacher={false}/></div>;
   if(page==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
-  if(page==="messages")return <div><Back/><Messages token={token} profile={profile}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name} role="parent"/></div>;
   if(page==="tuition")return <div><Back/><TuitionView token={token} profile={profile} student={sel}/></div>;
   if(page==="exam"){window.open(EXAM_URL,"_blank");setPage("home");}
@@ -1655,8 +1652,8 @@ function App(){
 
   // Bottom tabs
   const tabs=["teacher","finance","admin"].includes(role)
-    ?[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"scan",icon:"📷",label:tx("สแกน","Scan")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"messages",icon:"💬",label:tx("ข้อความ","Messages")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}]
-    :[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"messages",icon:"💬",label:tx("ข้อความ","Messages")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}];
+    ?[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"scan",icon:"📷",label:tx("สแกน","Scan")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}]
+    :[{id:"home",icon:"🏠",label:tx("หน้าหลัก","Home")},{id:"announce",icon:"📢",label:tx("ประกาศ","News")},{id:"settings",icon:"⚙️",label:tx("ตั้งค่า","Settings")}];
 
   function handleTab(id){
     if(id==="scan"){window.open("./scanner.html","_self");return;}
@@ -1678,11 +1675,10 @@ function App(){
     }
     // tabs
     if(tab==="announce")return <Announce token={token} profile={profile}/>;
-    if(tab==="messages")return <Messages token={token} profile={profile}/>;
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.2","Version 1.7.2")}].map((x,i)=>(
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.3","Version 1.7.3")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
