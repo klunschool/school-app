@@ -313,6 +313,7 @@ function ResetPasswordView({token,onDone}){
 
 // ======= LOGIN =======
 function Login({onLogin}){
+  const [lang,setLang]=useState(()=>localStorage.getItem("school_lang")||"th");
   const [register,setRegister]=useState(false);
   const [forgot,setForgot]=useState(false);
   const [resetSent,setResetSent]=useState(false);
@@ -323,6 +324,11 @@ function Login({onLogin}){
     try{const s=await signIn(email,pw);await submitParentRequestFromMetadata(s);const [p]=await sbFetch(`profiles?id=eq.${s.user.id}&select=*`,{token:s.access_token});await assertParentApproved(s,p);localStorage.setItem("sch",JSON.stringify({session:s,profile:p}));onLogin({session:s,profile:p});}
     catch(e){setErr(e.message);}finally{setLoading(false);}
   }
+  function toggleLanguage(){
+    const next=lang==="th"?"en":"th";
+    localStorage.setItem("school_lang",next);
+    setLang(next);
+  }
   if(register)return <ParentRegister onBack={()=>setRegister(false)}/>;
   async function sendRecovery(){
     if(!email.trim())return setErr(tx("กรุณากรอกอีเมล","Please enter your email"));
@@ -332,7 +338,10 @@ function Login({onLogin}){
     finally{setLoading(false);}
   }
   return(
-    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative"}}>
+      <button onClick={toggleLanguage} title={lang==="th"?"Switch to English":"เปลี่ยนเป็นภาษาไทย"} style={{position:"absolute",top:18,right:18,width:48,height:48,borderRadius:"50%",border:`1.5px solid ${C.gold}`,background:"rgba(255,255,255,0.12)",color:C.goldL,fontSize:13,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.18)"}}>
+        {lang==="th"?"EN":"TH"}
+      </button>
       <img src="./icon-512.png" style={{width:112,height:112,objectFit:"contain",marginBottom:16,filter:"drop-shadow(0 8px 18px rgba(0,0,0,0.3))"}} alt="ตราโรงเรียนกลั่นวิทยา"/>
       <div style={{color:C.gold,fontSize:22,fontWeight:800,marginBottom:4}}>{tx("โรงเรียนกลั่นวิทยา","Klunwittaya School")}</div>
       <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:32}}>{tx("ระบบแอปโรงเรียน","School application")}</div>
