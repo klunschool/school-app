@@ -46,6 +46,17 @@ async function signIn(email,pw){
   const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
   const d=await res.json();if(!res.ok)throw new Error(d.error_description||"เข้าสู่ระบบไม่สำเร็จ");return d;
 }
+async function requestPasswordReset(email){
+  const redirectTo=`${location.origin}${location.pathname}`;
+  const res=await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},
+    body:JSON.stringify({email:email.trim().toLowerCase()})
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.msg||d.error_description||d.message||tx("ส่งอีเมลกู้รหัสไม่สำเร็จ","Could not send recovery email"));
+  return d;
+}
 async function signUpParent(form){
   const redirectTo=`${location.origin}${location.pathname}`;
   const res=await fetch(`${SUPABASE_URL}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`,{
@@ -258,9 +269,53 @@ function ParentRegister({onBack}){
   );
 }
 
+function getRecoveryToken(){
+  const params=new URLSearchParams(location.hash.replace(/^#/,""));
+  return params.get("type")==="recovery"?params.get("access_token"):"";
+}
+function ResetPasswordView({token,onDone}){
+  const [password,setPassword]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  async function submit(e){
+    e.preventDefault();setError("");
+    if(password.length<8)return setError(tx("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัว","New password must contain at least 8 characters"));
+    if(password!==confirm)return setError(tx("ยืนยันรหัสผ่านไม่ตรงกัน","Passwords do not match"));
+    setBusy(true);
+    try{
+      await updatePassword(token,password);
+      await sbFetch("rpc/log_my_password_change",{method:"POST",token,body:"{}"}).catch(()=>null);
+      await signOut(token);
+      history.replaceState(null,"",location.pathname+location.search);
+      window.alert(tx("ตั้งรหัสผ่านใหม่สำเร็จ กรุณาเข้าสู่ระบบ","Password reset successfully. Please sign in."));
+      onDone();
+    }catch(e2){setError(e2.message||tx("ตั้งรหัสผ่านใหม่ไม่สำเร็จ","Could not reset password"));}
+    finally{setBusy(false);}
+  }
+  const field={width:"100%",padding:"12px 16px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.25)",background:"rgba(255,255,255,0.12)",color:C.white,fontSize:15,outline:"none",boxSizing:"border-box"};
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <img src="./icon-512.png" style={{width:100,height:100,objectFit:"contain",marginBottom:16}} alt="ตราโรงเรียนกลั่นวิทยา"/>
+      <form onSubmit={submit} style={{width:"100%",maxWidth:360,background:"rgba(255,255,255,0.1)",borderRadius:20,padding:24,border:"1px solid rgba(255,255,255,0.2)"}}>
+        <div style={{color:C.white,fontWeight:800,fontSize:18}}>🔐 {tx("ตั้งรหัสผ่านใหม่","Set a new password")}</div>
+        <div style={{color:"rgba(255,255,255,0.65)",fontSize:13,margin:"5px 0 16px"}}>{tx("กรอกรหัสผ่านใหม่อย่างน้อย 8 ตัว","Enter a new password with at least 8 characters")}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder={tx("รหัสผ่านใหม่","New password")} autoComplete="new-password" style={field}/>
+          <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder={tx("ยืนยันรหัสผ่านใหม่","Confirm new password")} autoComplete="new-password" style={field}/>
+          {error&&<div role="alert" style={{background:"rgba(220,38,38,0.2)",color:"#fca5a5",borderRadius:9,padding:10,fontSize:13}}>⚠️ {error}</div>}
+          <button disabled={busy} style={{padding:13,border:"none",borderRadius:12,background:busy?C.g400:C.goldL,color:C.navyD,fontSize:15,fontWeight:800}}>{busy?tx("กำลังบันทึก...","Saving..."):tx("บันทึกรหัสผ่านใหม่","Save new password")}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ======= LOGIN =======
 function Login({onLogin}){
   const [register,setRegister]=useState(false);
+  const [forgot,setForgot]=useState(false);
+  const [resetSent,setResetSent]=useState(false);
   const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
   async function go(){
     if(!email||!pw){setErr("กรุณากรอกอีเมลและรหัสผ่าน");return;}
@@ -269,13 +324,30 @@ function Login({onLogin}){
     catch(e){setErr(e.message);}finally{setLoading(false);}
   }
   if(register)return <ParentRegister onBack={()=>setRegister(false)}/>;
+  async function sendRecovery(){
+    if(!email.trim())return setErr(tx("กรุณากรอกอีเมล","Please enter your email"));
+    setLoading(true);setErr("");
+    try{await requestPasswordReset(email);setResetSent(true);}
+    catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  }
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <img src="./icon-512.png" style={{width:112,height:112,objectFit:"contain",marginBottom:16,filter:"drop-shadow(0 8px 18px rgba(0,0,0,0.3))"}} alt="ตราโรงเรียนกลั่นวิทยา"/>
       <div style={{color:C.gold,fontSize:22,fontWeight:800,marginBottom:4}}>{tx("โรงเรียนกลั่นวิทยา","Klunwittaya School")}</div>
       <div style={{color:"rgba(255,255,255,0.6)",fontSize:13,marginBottom:32}}>{tx("ระบบแอปโรงเรียน","School application")}</div>
       <div style={{width:"100%",maxWidth:360,background:"rgba(255,255,255,0.1)",backdropFilter:"blur(12px)",borderRadius:20,padding:24,border:"1px solid rgba(255,255,255,0.2)"}}>
-        <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:16}}>{tx("เข้าสู่ระบบ","Sign in")}</div>
+        <div style={{color:C.white,fontWeight:700,fontSize:17,marginBottom:16}}>{forgot?tx("ลืมรหัสผ่าน","Forgot password"):tx("เข้าสู่ระบบ","Sign in")}</div>
+        {forgot&&<div style={{color:"rgba(255,255,255,0.65)",fontSize:13,marginBottom:14}}>{resetSent?tx("ส่งลิงก์แล้ว กรุณาตรวจสอบอีเมลและโฟลเดอร์จดหมายขยะ","Link sent. Check your inbox and spam folder."):tx("กรอกอีเมลที่ใช้ลงทะเบียน ระบบจะส่งลิงก์ตั้งรหัสใหม่","Enter your registered email to receive a reset link.")}</div>}
+        {forgot?(
+          <>
+            {!resetSent&&<input type="email" placeholder={tx("อีเมล","Email")} value={email} onChange={e=>setEmail(e.target.value)} style={{width:"100%",padding:"12px 16px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.25)",background:"rgba(255,255,255,0.12)",color:C.white,fontSize:15,outline:"none",marginBottom:12,boxSizing:"border-box"}}/>}
+            {err&&<div style={{background:"rgba(220,38,38,0.2)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13,marginBottom:12}}>⚠️ {err}</div>}
+            {!resetSent&&<button onClick={sendRecovery} disabled={loading} style={{width:"100%",padding:13,border:"none",borderRadius:12,background:loading?C.g400:C.goldL,color:C.navyD,fontWeight:800,fontSize:15}}>{loading?tx("กำลังส่ง...","Sending..."):tx("ส่งลิงก์ตั้งรหัสใหม่","Send reset link")}</button>}
+            <button onClick={()=>{setForgot(false);setResetSent(false);setErr("");}} style={{width:"100%",marginTop:10,padding:10,border:"1px solid rgba(255,255,255,0.4)",borderRadius:11,background:"transparent",color:C.white,fontWeight:700}}>← {tx("กลับหน้าเข้าสู่ระบบ","Back to sign in")}</button>
+          </>
+        ):(
+          <>
         {[[tx("อีเมล","Email"),"email"],[tx("รหัสผ่าน","Password"),"password"]].map(([ph,type],i)=>(
           <input key={i} type={type} placeholder={ph} value={i===0?email:pw}
             onChange={e=>i===0?setEmail(e.target.value):setPw(e.target.value)}
@@ -286,9 +358,12 @@ function Login({onLogin}){
         <button onClick={go} disabled={loading} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:loading?"rgba(255,255,255,0.2)":`linear-gradient(135deg,${C.gold},${C.goldL})`,color:loading?C.white:C.navyD,fontWeight:800,fontSize:16,cursor:loading?"not-allowed":"pointer",boxShadow:loading?"none":"0 4px 16px rgba(201,162,39,0.5)"}}>
           {loading?tx("กำลังเข้าสู่ระบบ...","Signing in..."):tx("เข้าสู่ระบบ","Sign in")}
         </button>
+        <button onClick={()=>{setForgot(true);setErr("");}} style={{width:"100%",padding:"9px",border:"none",background:"transparent",color:C.goldL,fontSize:13,fontWeight:700,cursor:"pointer"}}>{tx("ลืมรหัสผ่าน?","Forgot password?")}</button>
         <button onClick={()=>setRegister(true)} style={{width:"100%",marginTop:10,padding:"11px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.45)",background:"transparent",color:C.white,fontWeight:700,fontSize:14,cursor:"pointer"}}>
           {tx("ลงทะเบียนผู้ปกครอง","Parent registration")}
         </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -595,6 +670,44 @@ function TeacherSchedule({token,profile}){
       <div style={{background:C.white,borderRadius:16,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         {imageUrl?<img src={imageUrl} alt={tx("รูปตารางสอน","Timetable")} style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>:<Empty icon="🗓️" msg={tx("ยังไม่มีรูปตารางสอน","No timetable image yet")}/>}
       </div>
+    </div>
+  );
+}
+
+function StudentSchedule({token,studentId}){
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);setError("");
+    sbFetch("rpc/get_student_timetable",{
+      method:"POST",
+      token,
+      body:JSON.stringify({p_student_id:Number(studentId)})
+    })
+      .then(rows=>{if(active)setItems(rows||[]);})
+      .catch(e=>{if(active)setError(e.message||tx("โหลดตารางสอนไม่สำเร็จ","Could not load timetable"));})
+      .finally(()=>{if(active)setLoading(false);});
+    return()=>{active=false;};
+  },[token,studentId]);
+  if(loading)return <Spin/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:17,fontWeight:800,color:C.navy}}>🗓️ {tx("ตารางสอน","Teaching timetable")}</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>{tx("ตารางสอนประจำห้องเรียนของบุตรหลาน","Your child's classroom timetable")}</div>
+      </div>
+      {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {error}</div>}
+      {items.length===0
+        ?<div style={{background:C.white,borderRadius:16}}><Empty icon="🗓️" msg={tx("คุณครูยังไม่ได้อัปโหลดตารางสอน","The teacher has not uploaded a timetable yet")}/></div>
+        :items.map((row,i)=>{
+          const imageUrl=`${teacherSchedulePublicUrl(row.image_path)}?v=${encodeURIComponent(row.updated_at||"")}`;
+          return <div key={`${row.image_path}-${i}`} style={{background:C.white,borderRadius:16,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+            {row.teacher_name&&<div style={{fontSize:12,color:C.g600,fontWeight:700,margin:"2px 2px 10px"}}>{tx("อัปโหลดโดย","Uploaded by")} {row.teacher_name}</div>}
+            <img src={imageUrl} alt={tx("รูปตารางสอน","Timetable")} style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>
+          </div>;
+        })}
     </div>
   );
 }
@@ -1052,6 +1165,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const menus=[
     {id:"att",icon:"📅",label:tx("การมาเรียน","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>onPageChange("attend")},
     {id:"hist",icon:"🕐",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
+    ...(isParent?[{id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#2563eb,#3b82f6)",action:()=>onPageChange("schedule")}]:[]),
     {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
@@ -1344,6 +1458,7 @@ function ParentView({token,profile,userId}){
   // หน้าย่อยสำหรับผู้ปกครอง
   const Back=()=><button onClick={()=>setPage("home")} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← กลับ</button>;
   if(page==="attend")return <div><Back/><AttendContent token={token} studentId={sel.id}/></div>;
+  if(page==="schedule")return <div><Back/><StudentSchedule token={token} studentId={sel.id}/></div>;
   if(page==="grades")return <div><Back/><Grades token={token} isTeacher={false}/></div>;
   if(page==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
@@ -1433,6 +1548,7 @@ function ChangePasswordView({email,token,onChanged}){
 // ======= MAIN APP =======
 function App(){
   const [auth,setAuth]=useState(()=>{try{const s=localStorage.getItem("sch");return s?JSON.parse(s):null;}catch{return null;}});
+  const [recoveryToken,setRecoveryToken]=useState(()=>getRecoveryToken());
   const [checkingParentAccess,setCheckingParentAccess]=useState(true);
   const [tab,setTab]=useState("home");
   const [subPage,setSubPage]=useState(null);
@@ -1468,6 +1584,7 @@ function App(){
   function onLogin(d){setCheckingParentAccess(d.profile?.role==="parent");setAuth(d);setTab("home");setSubPage(null);setActiveRole(null);}
   function onLogout(){signOut(auth?.session?.access_token);localStorage.removeItem("sch");setAuth(null);}
 
+  if(recoveryToken)return <ResetPasswordView token={recoveryToken} onDone={()=>{localStorage.removeItem("sch");setAuth(null);setRecoveryToken("");}}/>;
   if(checkingParentAccess)return <div style={{minHeight:"100vh",background:C.bg}}><Spin/></div>;
   if(!auth)return <Login onLogin={onLogin}/>;
   const {session,profile}=auth;
@@ -1507,7 +1624,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.0","Version 1.7.0")}].map((x,i)=>(
+        {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.2","Version 1.7.2")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
           </div>
