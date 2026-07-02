@@ -40,6 +40,15 @@ async function sbFetch(path,options={}){
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
   return res.status===204?null:res.json();
 }
+function formatThaiTime(value){
+  if(!value)return "-";
+  const raw=String(value);
+  const hasTimezone=/([zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const date=new Date(hasTimezone?raw:`${raw}Z`);
+  return Number.isNaN(date.getTime())?"-":date.toLocaleTimeString("th-TH",{
+    hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Bangkok"
+  });
+}
 
 const C={
   primary:"#2563EB",primaryLight:"#EFF6FF",
@@ -83,8 +92,9 @@ function App(){
   const loadLogs=useCallback(()=>{
     if(!auth)return;
     setLoadingLogs(true);
-    const today=new Date().toISOString().split("T")[0];
-    sbFetch(`checkin_log?scanned_at=gte.${today}T00:00:00&select=*,students(full_name,student_no)&order=scanned_at.desc&limit=50`,{token:auth.session.access_token})
+    const start=new Date();start.setHours(0,0,0,0);
+    const end=new Date(start);end.setDate(end.getDate()+1);
+    sbFetch(`checkin_log?scanned_at=gte.${start.toISOString()}&scanned_at=lt.${end.toISOString()}&select=*,students(full_name,student_no)&order=scanned_at.desc&limit=50`,{token:auth.session.access_token})
       .then(l=>setLogs(l||[])).finally(()=>setLoadingLogs(false));
   },[auth]);
 
@@ -327,7 +337,7 @@ function App(){
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontWeight:700,fontSize:14,color:log.type==="in"?C.green:C.red}}>{log.type==="in"?"เข้า":"ออก"}</div>
-                  <div style={{fontSize:12,color:C.gray400}}>{new Date(log.scanned_at).toLocaleTimeString("th-TH",{timeStyle:"short"})}</div>
+                  <div style={{fontSize:12,color:C.gray400}}>{formatThaiTime(log.scanned_at)}</div>
                 </div>
               </div>
             ))}
