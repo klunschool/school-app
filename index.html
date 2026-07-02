@@ -606,12 +606,21 @@ function LeaveRequestsView({token,profile,readOnly=false}){
 function AttendCheck({token,profile}){
   const [rows,setRows]=useState([]);const [loading,setLoading]=useState(true);
   const [date,setDate]=useState(localDateISO());
-  useEffect(()=>{
-    setLoading(true);
-    const load=()=>sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:null,p_date_from:date,p_date_to:date})})
-      .then(r=>setRows(r||[])).catch(()=>setRows([])).finally(()=>setLoading(false));
-    load();const timer=setInterval(load,10000);return()=>clearInterval(timer);
-  },[token,profile.id,date]);
+  const [busy,setBusy]=useState("");
+  const load=useCallback((silent=false)=>{
+    if(!silent)setLoading(true);
+    return sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:null,p_date_from:date,p_date_to:date})})
+      .then(r=>setRows(r||[])).catch(()=>setRows([])).finally(()=>{if(!silent)setLoading(false);});
+  },[token,date]);
+  useEffect(()=>{load();const timer=setInterval(()=>load(true),10000);return()=>clearInterval(timer);},[load]);
+  async function markPresent(student,reason){
+    const key=`${student.student_id}-${reason}`;setBusy(key);
+    try{
+      await sbFetch("rpc/record_manual_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:student.student_id,p_date:date,p_reason:reason})});
+      await load(true);
+    }catch(e){alert(e.message||tx("บันทึกไม่สำเร็จ","Could not save attendance"));}
+    finally{setBusy("");}
+  }
   const opts=[{v:"present",l:"มา",c:C.green,bg:C.greenL},{v:"late",l:"สาย",c:C.yellow,bg:C.yellowL},{v:"absent",l:"ขาด",c:C.red,bg:C.redL},{v:"leave",l:"ลา",c:C.g600,bg:C.g100}];
   const sum={present:0,late:0,absent:0,leave:0};rows.forEach(r=>{if(sum[r.status]!==undefined)sum[r.status]++;});
   if(loading)return <Spin/>;
@@ -628,9 +637,13 @@ function AttendCheck({token,profile}){
           return <div key={s.id} style={{padding:"12px 0",borderBottom:i<rows.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
               <div style={{width:30,height:30,borderRadius:99,background:C.goldP,color:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:12,border:`1.5px solid ${C.gold}`}}>{s.student_no||i+1}</div>
-              <div style={{fontWeight:600,fontSize:14,color:C.g900,flex:1}}>{s.full_name}</div>
+              <div style={{fontWeight:600,fontSize:14,color:C.g900,flex:1}}>{s.full_name}{s.attendance_note&&<div style={{fontSize:11,color:C.g400,fontWeight:500,marginTop:2}}>{s.attendance_note}</div>}</div>
               <span style={{background:o.bg,color:o.c,borderRadius:99,padding:"4px 10px",fontSize:12,fontWeight:800}}>{o.l}{s.scanned_time?` ${String(s.scanned_time).slice(0,5)}`:""}</span>
             </div>
+            {s.status==="absent"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginLeft:40}}>
+              <button disabled={!!busy} onClick={()=>markPresent(s,"forgot_card")} style={{border:`1px solid ${C.navy}`,borderRadius:8,padding:"7px 4px",background:C.white,color:C.navy,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-forgot_card`?tx("กำลังบันทึก...","Saving..."):tx("ลืมบัตร","Forgot card")}</button>
+              <button disabled={!!busy} onClick={()=>markPresent(s,"damaged_card")} style={{border:`1px solid ${C.yellow}`,borderRadius:8,padding:"7px 4px",background:C.yellowL,color:C.yellow,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-damaged_card`?tx("กำลังบันทึก...","Saving..."):tx("บัตรชำรุด","Damaged card")}</button>
+            </div>}
           </div>
         })}
       </div>
@@ -790,7 +803,7 @@ function Announce({token,profile}){
         <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>ประกาศทั้งหมด</div>
         {loading?<Spin/>:list.length===0?<Empty icon="📭" msg="ยังไม่มีประกาศ"/>:list.map((a,i)=>(
           <div key={a.id} style={{padding:"12px 0",borderBottom:i<list.length-1?`1px solid ${C.g100}`:"none"}}>
-            <div style={{display:"flex",gap:6}}>{a.pinned&&<span>📌</span>}<div><div style={{fontWeight:700,fontSize:14}}>{a.title}</div>{a.body&&<div style={{fontSize:13,color:C.g600,marginTop:2}}>{a.body}</div>}{a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,marginTop:4,display:"inline-block"}}>{a.tag}</span>}</div></div>
+            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>{a.pinned&&<span style={{marginTop:1}}>📌</span>}<div style={{minWidth:0,flex:1}}><div style={{fontWeight:800,fontSize:15,color:C.navy,lineHeight:1.4}}>{a.title}</div>{a.body&&<div style={{fontSize:13,color:C.g600,marginTop:8,whiteSpace:"pre-line",lineHeight:1.7,wordBreak:"break-word"}}>{a.body}</div>}{a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:700,marginTop:10,display:"inline-block"}}>{a.tag}</span>}</div></div>
           </div>
         ))}
       </div>
@@ -1224,7 +1237,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       {/* ประกาศ */}
       {data.ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {data.ann.map((a,i)=><div key={a.id} style={{padding:"8px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:600,fontSize:13,color:C.g900}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:1}}>{a.body}</div>}</div>)}
+        {data.ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.g900,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:4,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
       </div>}
     </div>
   );
@@ -1289,7 +1302,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
       </div>
       {ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {ann.map((a,i)=><div key={a.id} style={{padding:"8px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:600,fontSize:13}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:1}}>{a.body}</div>}</div>)}
+        {ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.navy,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:4,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
       </div>}
     </div>
   );
@@ -1545,7 +1558,7 @@ function AttendContent({token,studentId}){
           return <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<shown.length-1?`1px solid ${C.g100}`:"none"}}>
             <div>
               <div style={{fontSize:14,color:C.g700,fontWeight:600}}>{new Date(a.date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div>
-              {a.scanned_time&&<div style={{fontSize:11,color:C.g400,marginTop:2}}>{tx("เวลาสแกน","Scan time")} {String(a.scanned_time).slice(0,5)}</div>}
+              {a.scanned_time&&<div style={{fontSize:11,color:C.g400,marginTop:2}}>{a.scan_source==="teacher_manual"?a.attendance_note:tx("เวลาสแกน","Scan time")+" "+String(a.scanned_time).slice(0,5)}</div>}
             </div>
             <span style={{background:st.bg,color:st.color,borderRadius:99,padding:"3px 11px",fontSize:12,fontWeight:800}}>{st.label}</span>
           </div>;
