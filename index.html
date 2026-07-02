@@ -171,6 +171,16 @@ async function notifyTelegramPayment(paymentId,token){
   if(!res.ok)throw new Error(d.error||"ส่งข้อความ Telegram ไม่สำเร็จ");
   return d;
 }
+async function notifyTelegramSupport(payload){
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/notify-support`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},
+    body:JSON.stringify(payload),
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.error||tx("ส่งคำขอช่วยเหลือไม่สำเร็จ","Could not send support request"));
+  return d;
+}
 
 const C={
   navy:"#1a3a6b",navyD:"#0f2347",navyL:"#2a5298",
@@ -322,10 +332,68 @@ function ResetPasswordView({token,onDone}){
   );
 }
 
+function SupportContact({onBack}){
+  const [email,setEmail]=useState("");
+  const [category,setCategory]=useState("login");
+  const [message,setMessage]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [sent,setSent]=useState(false);
+  const [error,setError]=useState("");
+  async function send(){
+    const cleanEmail=email.trim().toLowerCase();
+    const cleanMessage=message.trim();
+    if(!cleanEmail||!cleanMessage)return setError(tx("กรุณากรอกอีเมลและรายละเอียดปัญหา","Enter your email and issue details"));
+    if(/\d{13}/.test(cleanMessage))return setError(tx("กรุณาอย่าส่งเลขประจำตัวนักเรียน 13 หลัก","Do not include the student's 13-digit ID"));
+    setLoading(true);setError("");
+    try{
+      await notifyTelegramSupport({email:cleanEmail,category,message:cleanMessage});
+      setSent(true);
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  }
+  const fieldStyle={width:"100%",padding:"12px 16px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.25)",background:"rgba(255,255,255,0.12)",color:C.white,fontSize:15,outline:"none",marginBottom:12,boxSizing:"border-box"};
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.navyD},${C.navy} 60%,${C.navyL})`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <img src="./icon-512.png" style={{width:96,height:96,objectFit:"contain",marginBottom:14}} alt="Klunwittaya"/>
+      <div style={{color:C.gold,fontSize:22,fontWeight:800,marginBottom:24}}>{tx("ติดต่อผู้ดูแลระบบ","Contact support")}</div>
+      <div style={{width:"100%",maxWidth:380,background:"rgba(255,255,255,0.1)",borderRadius:20,padding:24,border:"1px solid rgba(255,255,255,0.2)"}}>
+        {sent?(
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:42,marginBottom:10}}>✅</div>
+            <div style={{color:C.white,fontSize:18,fontWeight:800}}>{tx("ส่งคำขอแล้ว","Request sent")}</div>
+            <div style={{color:"rgba(255,255,255,0.72)",fontSize:13,lineHeight:1.6,margin:"10px 0 20px"}}>{tx("ผู้ดูแลได้รับการแจ้งเตือนแล้ว และจะติดต่อกลับทางอีเมล","The administrator has been notified and will contact you by email.")}</div>
+          </div>
+        ):(
+          <>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder={tx("อีเมลสำหรับติดต่อกลับ","Contact email")} style={fieldStyle}/>
+            <select value={category} onChange={e=>setCategory(e.target.value)} style={fieldStyle}>
+              <option value="login">{tx("เข้าสู่ระบบไม่ได้","Cannot sign in")}</option>
+              <option value="registration">{tx("ปัญหาการลงทะเบียนผู้ปกครอง","Parent registration")}</option>
+              <option value="approval">{tx("รอการอนุมัติบัญชี","Account approval")}</option>
+              <option value="student-linked">{tx("นักเรียนถูกผูกกับบัญชีอื่น","Student linked to another account")}</option>
+              <option value="other">{tx("ปัญหาอื่น ๆ","Other issue")}</option>
+            </select>
+            <textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={500} rows="4" placeholder={tx("อธิบายปัญหาโดยย่อ","Briefly describe the issue")} style={{...fieldStyle,resize:"vertical"}}/>
+            <div style={{background:"rgba(240,208,96,0.13)",border:"1px solid rgba(240,208,96,0.35)",borderRadius:9,padding:"9px 11px",color:C.goldL,fontSize:12,lineHeight:1.5,marginBottom:12}}>
+              {tx("เพื่อความปลอดภัย ห้ามส่งรหัสผ่านหรือเลขประจำตัวนักเรียน 13 หลัก","For security, never send a password or a student's 13-digit ID.")}
+            </div>
+            {error&&<div style={{background:"rgba(220,38,38,0.2)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13,marginBottom:12}}>⚠️ {error}</div>}
+            <button onClick={send} disabled={loading} style={{width:"100%",padding:13,border:"none",borderRadius:12,background:loading?C.g400:C.goldL,color:C.navyD,fontWeight:800,fontSize:15,cursor:"pointer"}}>
+              {loading?tx("กำลังส่ง...","Sending..."):tx("ส่งคำขอช่วยเหลือ","Send support request")}
+            </button>
+          </>
+        )}
+        <button onClick={onBack} style={{width:"100%",marginTop:10,padding:10,border:"1px solid rgba(255,255,255,0.4)",borderRadius:11,background:"transparent",color:C.white,fontWeight:700,cursor:"pointer"}}>← {tx("กลับหน้าเข้าสู่ระบบ","Back to sign in")}</button>
+      </div>
+    </div>
+  );
+}
+
 // ======= LOGIN =======
 function Login({onLogin}){
   const [lang,setLang]=useState(()=>localStorage.getItem("school_lang")||"th");
   const [register,setRegister]=useState(false);
+  const [support,setSupport]=useState(false);
   const [forgot,setForgot]=useState(false);
   const [resetSent,setResetSent]=useState(false);
   const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
@@ -341,6 +409,7 @@ function Login({onLogin}){
     setLang(next);
   }
   if(register)return <ParentRegister onBack={()=>setRegister(false)}/>;
+  if(support)return <SupportContact onBack={()=>setSupport(false)}/>;
   async function sendRecovery(){
     if(!email.trim())return setErr(tx("กรุณากรอกอีเมล","Please enter your email"));
     setLoading(true);setErr("");
@@ -381,6 +450,9 @@ function Login({onLogin}){
         <button onClick={()=>{setForgot(true);setErr("");}} style={{width:"100%",padding:"9px",border:"none",background:"transparent",color:C.goldL,fontSize:13,fontWeight:700,cursor:"pointer"}}>{tx("ลืมรหัสผ่าน?","Forgot password?")}</button>
         <button onClick={()=>setRegister(true)} style={{width:"100%",marginTop:10,padding:"11px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.45)",background:"transparent",color:C.white,fontWeight:700,fontSize:14,cursor:"pointer"}}>
           {tx("ลงทะเบียนผู้ปกครอง","Parent registration")}
+        </button>
+        <button onClick={()=>setSupport(true)} style={{width:"100%",marginTop:9,padding:"10px",border:"none",background:"transparent",color:C.goldL,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          🛟 {tx("ติดต่อผู้ดูแลระบบ","Contact support")}
         </button>
           </>
         )}
