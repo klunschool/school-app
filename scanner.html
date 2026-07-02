@@ -96,11 +96,30 @@ function App(){
     setScanning(true);
     setLastScan(null);
     setTimeout(()=>{
-      const html5Qr=new Html5Qrcode("qr-reader");
+      const supportedFormats=[
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_93,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+      ];
+      const html5Qr=new Html5Qrcode("qr-reader",{formatsToSupport:supportedFormats,verbose:false});
       html5QrRef.current=html5Qr;
       html5Qr.start(
         {facingMode:"environment"},
-        {fps:10,qrbox:{width:250,height:250}},
+        {
+          fps:12,
+          aspectRatio:1.333,
+          qrbox:(viewWidth,viewHeight)=>({
+            width:Math.floor(Math.min(viewWidth*0.88,320)),
+            height:Math.floor(Math.min(viewHeight*0.55,210))
+          })
+        },
         async(decodedText)=>{
           await html5Qr.stop().catch(()=>{});
           setScanning(false);
@@ -123,12 +142,17 @@ function App(){
     // QR Code format: "student:123"
     // รองรับทั้งเลข 13 หลัก และรูปแบบ student:id
     let student=null;
-    if(text.startsWith("student:")){
-      const studentId=parseInt(text.replace("student:",""));
+    const value=String(text||"").trim();
+    if(value.startsWith("student:")){
+      const studentId=parseInt(value.replace("student:",""));
       student=students.find(s=>s.id===studentId);
     }else{
-      // ค้นหาจากเลขประจำตัว 13 หลัก
-      student=students.find(s=>s.student_id_no===text.trim());
+      // รองรับเลขประจำตัวจาก QR และบาร์โค้ด รวมถึงขีด/ช่องว่างที่ติดมากับบาร์โค้ด
+      const digits=value.replace(/\D/g,"");
+      student=students.find(s=>String(s.student_id_no||"").trim()===value);
+      if(!student&&digits.length===13){
+        student=students.find(s=>String(s.student_id_no||"").replace(/\D/g,"")===digits);
+      }
     }
     if(!student){
       setLastScan({success:false,message:`ไม่พบข้อมูลนักเรียน (${text})`});
@@ -206,10 +230,11 @@ function App(){
               {!scanning?(
                 <div style={{textAlign:"center"}}>
                   <div style={{fontSize:64,marginBottom:8}}>📷</div>
-                  <div style={{fontSize:15,fontWeight:600,color:C.gray700,marginBottom:4}}>พร้อมสแกน QR Code</div>
+                  <div style={{fontSize:15,fontWeight:600,color:C.gray700,marginBottom:4}}>พร้อมสแกน QR Code หรือบาร์โค้ด</div>
+                  <div style={{fontSize:12,color:C.gray400,marginBottom:12}}>รองรับ QR, Code 128, Code 39 และ EAN-13</div>
                   <div style={{fontSize:13,color:C.gray400,marginBottom:20}}>โหมด: {scanMode==="in"?"🟢 เข้าเรียน":"🔴 ออก"}</div>
                   <button onClick={startScanner} style={{background:C.primary,color:C.white,border:"none",borderRadius:12,padding:"14px 32px",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%"}}>
-                    เปิดกล้องสแกน
+                    เปิดกล้องสแกน QR / บาร์โค้ด
                   </button>
                 </div>
               ):(
