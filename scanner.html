@@ -76,6 +76,8 @@ function App(){
   const [loadingLogs,setLoadingLogs]=useState(false);
   const scannerRef=useRef(null);
   const html5QrRef=useRef(null);
+  const scanLockRef=useRef(false);
+  const recentScanRef=useRef({value:"",time:0});
 
   useEffect(()=>{
     if(!auth)return;
@@ -130,9 +132,18 @@ function App(){
           })
         },
         async(decodedText)=>{
-          await html5Qr.stop().catch(()=>{});
-          setScanning(false);
-          await handleScan(decodedText);
+          const value=String(decodedText||"").trim();
+          const now=Date.now();
+          if(scanLockRef.current)return;
+          if(recentScanRef.current.value===value&&now-recentScanRef.current.time<10000)return;
+          scanLockRef.current=true;
+          recentScanRef.current={value,time:now};
+          try{
+            const success=await handleScan(value);
+            if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
+          }finally{
+            setTimeout(()=>{scanLockRef.current=false;},650);
+          }
         },
         ()=>{}
       ).then(()=>{
@@ -152,6 +163,8 @@ function App(){
       html5QrRef.current.stop().catch(()=>{});
       html5QrRef.current=null;
     }
+    scanLockRef.current=false;
+    recentScanRef.current={value:"",time:0};
     setScanning(false);
   }
 
@@ -173,7 +186,7 @@ function App(){
     }
     if(!student){
       setLastScan({success:false,message:`ไม่พบข้อมูลนักเรียน (${text})`});
-      return;
+      return false;
     }
     try{
       await sbFetch("checkin_log",{
@@ -187,8 +200,10 @@ function App(){
         student,
         time:new Date().toLocaleTimeString("th-TH",{timeStyle:"short"}),
       });
+      return true;
     }catch(e){
       setLastScan({success:false,message:"บันทึกไม่สำเร็จ: "+e.message});
+      return false;
     }
   }
 
@@ -276,9 +291,9 @@ function App(){
                     <div style={{fontSize:22,fontWeight:700,color:C.gray900,marginTop:8}}>{lastScan.student.full_name}</div>
                     <div style={{fontSize:14,color:C.gray600}}>เลขที่ {lastScan.student.student_no} · {lastScan.student.classes?.name}</div>
                     <div style={{fontSize:20,fontWeight:800,color:lastScan.type==="in"?C.green:C.red,marginTop:8}}>🕐 {lastScan.time}</div>
-                    <button onClick={startScanner} style={{marginTop:16,width:"100%",background:C.primary,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                      สแกนคนถัดไป
-                    </button>
+                    {scanning
+                      ?<div style={{marginTop:14,background:C.white,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:800,color:C.primary}}>📷 พร้อมสแกนนักเรียนคนถัดไปทันที</div>
+                      :<button onClick={startScanner} style={{marginTop:16,width:"100%",background:C.primary,color:C.white,border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>เปิดกล้องสแกนต่อ</button>}
                   </div>
                 ):(
                   <div style={{textAlign:"center"}}>
