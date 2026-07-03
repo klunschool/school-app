@@ -74,7 +74,9 @@ function App(){
   const [students,setStudents]=useState([]);
   const [logs,setLogs]=useState([]);
   const [loadingLogs,setLoadingLogs]=useState(false);
+  const [hardwareCode,setHardwareCode]=useState("");
   const scannerRef=useRef(null);
+  const hardwareInputRef=useRef(null);
   const html5QrRef=useRef(null);
   const scanLockRef=useRef(false);
   const recentScanRef=useRef({value:"",time:0});
@@ -152,6 +154,33 @@ function App(){
     if(tab==="log")loadLogs();
   },[tab,loadLogs]);
 
+  async function processDecoded(decodedText){
+    const value=String(decodedText||"").trim();
+    if(!value)return false;
+    const now=Date.now();
+    if(scanLockRef.current)return false;
+    if(recentScanRef.current.value===value&&now-recentScanRef.current.time<10000)return false;
+    scanLockRef.current=true;
+    recentScanRef.current={value,time:now};
+    try{
+      const success=await handleScan(value);
+      await playScanSound(success);
+      if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
+      return success;
+    }finally{
+      setTimeout(()=>{scanLockRef.current=false;},650);
+    }
+  }
+
+  async function submitHardwareCode(){
+    const value=hardwareCode.trim();
+    if(!value)return;
+    setHardwareCode("");
+    await prepareAudio();
+    await processDecoded(value);
+    setTimeout(()=>hardwareInputRef.current?.focus(),50);
+  }
+
   async function startScanner(){
     await prepareAudio();
     setScanning(true);
@@ -181,19 +210,7 @@ function App(){
           })
         },
         async(decodedText)=>{
-          const value=String(decodedText||"").trim();
-          const now=Date.now();
-          if(scanLockRef.current)return;
-          if(recentScanRef.current.value===value&&now-recentScanRef.current.time<10000)return;
-          scanLockRef.current=true;
-          recentScanRef.current={value,time:now};
-          try{
-            const success=await handleScan(value);
-            await playScanSound(success);
-            if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
-          }finally{
-            setTimeout(()=>{scanLockRef.current=false;},650);
-          }
+          await processDecoded(decodedText);
         },
         ()=>{}
       ).then(()=>{
@@ -306,6 +323,28 @@ function App(){
                 </button>
               </div>
             </div>
+
+            {/* USB / Bluetooth HID scanner */}
+            {!scanning&&<div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+              <div style={{fontSize:14,fontWeight:800,color:C.gray700,marginBottom:4}}>🔫 เครื่องสแกน USB / Bluetooth</div>
+              <div style={{fontSize:12,color:C.gray400,marginBottom:10}}>แตะช่องด้านล่างหนึ่งครั้ง แล้วใช้เครื่องยิงบาร์โค้ดได้ต่อเนื่อง</div>
+              <input
+                ref={hardwareInputRef}
+                value={hardwareCode}
+                inputMode="none"
+                autoComplete="off"
+                placeholder="พร้อมรับหมายเลขจากเครื่องสแกน"
+                onChange={e=>setHardwareCode(e.target.value)}
+                onKeyDown={e=>{
+                  if(e.key==="Enter"||e.key==="Tab"){
+                    e.preventDefault();
+                    submitHardwareCode();
+                  }
+                }}
+                style={{width:"100%",padding:"12px",borderRadius:10,border:`2px solid ${C.primary}`,fontSize:15,outline:"none",textAlign:"center",boxSizing:"border-box"}}
+              />
+              <button onClick={()=>hardwareInputRef.current?.focus()} style={{marginTop:9,width:"100%",padding:"9px",borderRadius:9,border:"none",background:C.gray100,color:C.primary,fontWeight:800,cursor:"pointer"}}>⌨️ เปิดรับเครื่องสแกน</button>
+            </div>}
 
             {/* Scanner */}
             <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
