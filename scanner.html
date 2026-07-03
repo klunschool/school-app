@@ -78,6 +78,44 @@ function App(){
   const html5QrRef=useRef(null);
   const scanLockRef=useRef(false);
   const recentScanRef=useRef({value:"",time:0});
+  const audioContextRef=useRef(null);
+
+  function prepareAudio(){
+    try{
+      const AudioCtx=window.AudioContext||window.webkitAudioContext;
+      if(!AudioCtx)return;
+      if(!audioContextRef.current)audioContextRef.current=new AudioCtx();
+      if(audioContextRef.current.state==="suspended")audioContextRef.current.resume().catch(()=>{});
+    }catch{}
+  }
+
+  function playScanSound(success){
+    try{
+      prepareAudio();
+      const ctx=audioContextRef.current;
+      if(!ctx)return;
+      const tone=(frequency,start,duration,volume=0.18)=>{
+        const oscillator=ctx.createOscillator();
+        const gain=ctx.createGain();
+        oscillator.type="sine";
+        oscillator.frequency.setValueAtTime(frequency,start);
+        gain.gain.setValueAtTime(volume,start);
+        gain.gain.exponentialRampToValueAtTime(0.001,start+duration);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(start);
+        oscillator.stop(start+duration);
+      };
+      const now=ctx.currentTime;
+      if(success){
+        tone(1050,now,0.10);
+        tone(1450,now+0.11,0.13);
+      }else{
+        tone(320,now,0.16);
+        tone(240,now+0.18,0.20);
+      }
+    }catch{}
+  }
 
   useEffect(()=>{
     if(!auth)return;
@@ -105,6 +143,7 @@ function App(){
   },[tab,loadLogs]);
 
   async function startScanner(){
+    prepareAudio();
     setScanning(true);
     setLastScan(null);
     setTimeout(()=>{
@@ -140,6 +179,7 @@ function App(){
           recentScanRef.current={value,time:now};
           try{
             const success=await handleScan(value);
+            playScanSound(success);
             if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
           }finally{
             setTimeout(()=>{scanLockRef.current=false;},650);
