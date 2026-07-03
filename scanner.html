@@ -80,18 +80,28 @@ function App(){
   const recentScanRef=useRef({value:"",time:0});
   const audioContextRef=useRef(null);
 
-  function prepareAudio(){
+  async function prepareAudio(){
     try{
       const AudioCtx=window.AudioContext||window.webkitAudioContext;
-      if(!AudioCtx)return;
+      if(!AudioCtx)return false;
       if(!audioContextRef.current)audioContextRef.current=new AudioCtx();
-      if(audioContextRef.current.state==="suspended")audioContextRef.current.resume().catch(()=>{});
-    }catch{}
+      const ctx=audioContextRef.current;
+      if(ctx.state==="suspended")await ctx.resume();
+      // A silent pulse inside the user gesture unlocks audio on Android/PWA.
+      const oscillator=ctx.createOscillator();
+      const gain=ctx.createGain();
+      gain.gain.setValueAtTime(0.0001,ctx.currentTime);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime+0.01);
+      return ctx.state==="running";
+    }catch{return false;}
   }
 
-  function playScanSound(success){
+  async function playScanSound(success){
     try{
-      prepareAudio();
+      await prepareAudio();
       const ctx=audioContextRef.current;
       if(!ctx)return;
       const tone=(frequency,start,duration,volume=0.18)=>{
@@ -108,11 +118,11 @@ function App(){
       };
       const now=ctx.currentTime;
       if(success){
-        tone(1050,now,0.10);
-        tone(1450,now+0.11,0.13);
+        tone(1050,now,0.14,0.45);
+        tone(1500,now+0.15,0.18,0.48);
       }else{
-        tone(320,now,0.16);
-        tone(240,now+0.18,0.20);
+        tone(320,now,0.20,0.42);
+        tone(220,now+0.22,0.24,0.45);
       }
     }catch{}
   }
@@ -143,7 +153,7 @@ function App(){
   },[tab,loadLogs]);
 
   async function startScanner(){
-    prepareAudio();
+    await prepareAudio();
     setScanning(true);
     setLastScan(null);
     setTimeout(()=>{
@@ -179,7 +189,7 @@ function App(){
           recentScanRef.current={value,time:now};
           try{
             const success=await handleScan(value);
-            playScanSound(success);
+            await playScanSound(success);
             if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
           }finally{
             setTimeout(()=>{scanLockRef.current=false;},650);
@@ -305,6 +315,9 @@ function App(){
                   <div style={{fontSize:15,fontWeight:600,color:C.gray700,marginBottom:4}}>พร้อมสแกน QR Code หรือบาร์โค้ด</div>
                   <div style={{fontSize:12,color:C.gray400,marginBottom:12}}>รองรับ QR, Code 128, Code 39 และ EAN-13</div>
                   <div style={{fontSize:13,color:C.gray400,marginBottom:20}}>โหมด: {scanMode==="in"?"🟢 เข้าเรียน":"🔴 ออก"}</div>
+                  <button onClick={async()=>{await prepareAudio();await playScanSound(true);if(navigator.vibrate)navigator.vibrate(80);}} style={{marginBottom:10,background:C.white,color:C.primary,border:`1.5px solid ${C.primary}`,borderRadius:10,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer",width:"100%"}}>
+                    🔊 ทดสอบเสียงติ๊ด
+                  </button>
                   <button onClick={startScanner} style={{background:C.primary,color:C.white,border:"none",borderRadius:12,padding:"14px 32px",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%"}}>
                     เปิดกล้องสแกน QR / บาร์โค้ด
                   </button>
