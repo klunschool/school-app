@@ -110,24 +110,23 @@ function App(){
         Html5QrcodeSupportedFormats.QR_CODE,
         Html5QrcodeSupportedFormats.CODE_128,
         Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.CODE_93,
-        Html5QrcodeSupportedFormats.CODABAR,
         Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
       ];
-      const html5Qr=new Html5Qrcode("qr-reader",{formatsToSupport:supportedFormats,verbose:false});
+      const html5Qr=new Html5Qrcode("qr-reader",{
+        formatsToSupport:supportedFormats,
+        experimentalFeatures:{useBarCodeDetectorIfSupported:true},
+        verbose:false
+      });
       html5QrRef.current=html5Qr;
       html5Qr.start(
         {facingMode:"environment"},
         {
-          fps:12,
+          fps:20,
           aspectRatio:1.333,
+          disableFlip:true,
           qrbox:(viewWidth,viewHeight)=>({
-            width:Math.floor(Math.min(viewWidth*0.88,320)),
-            height:Math.floor(Math.min(viewHeight*0.55,210))
+            width:Math.floor(Math.min(viewWidth*0.92,360)),
+            height:Math.floor(Math.min(viewHeight*0.62,240))
           })
         },
         async(decodedText)=>{
@@ -136,7 +135,15 @@ function App(){
           await handleScan(decodedText);
         },
         ()=>{}
-      ).catch(()=>{setScanning(false);alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง");});
+      ).then(()=>{
+        // Continuous autofocus improves barcode pickup on supported Android cameras.
+        const video=document.querySelector("#qr-reader video");
+        const track=video?.srcObject?.getVideoTracks?.()[0];
+        const capabilities=track?.getCapabilities?.()||{};
+        if(track&&Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes("continuous")){
+          track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{});
+        }
+      }).catch(()=>{setScanning(false);alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง");});
     },300);
   }
 
