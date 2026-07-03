@@ -42,6 +42,22 @@ async function sbFetch(path,options={}){
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
   return res.status===204?null:res.json();
 }
+async function notifyParentApproved(requestId,token){
+  const res=await fetch(`${SUPABASE_URL}/functions/v1/notify-parent-approved`,{
+    method:"POST",
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${token}`,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({request_id:requestId})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok||data?.ok!==true){
+    throw new Error(data?.error||tx("ส่งอีเมลอนุมัติไม่สำเร็จ","Could not send approval email"));
+  }
+  return data;
+}
 async function signIn(email,pw){
   const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
   const d=await res.json();if(!res.ok)throw new Error(d.error_description||"เข้าสู่ระบบไม่สำเร็จ");return d;
@@ -1469,6 +1485,13 @@ function ParentLinkApprovals({token,readOnly=false}){
     setBusy(id+decision);setErr("");
     try{
       await sbFetch("rpc/review_parent_link_request",{method:"POST",token,body:JSON.stringify({p_request_id:id,p_decision:decision})});
+      if(decision==="approved"){
+        try{
+          await notifyParentApproved(id,token);
+        }catch(mailError){
+          setErr(tx("อนุมัติบัญชีแล้ว แต่ส่งอีเมลไม่สำเร็จ: ","Account approved, but the email could not be sent: ")+(mailError.message||""));
+        }
+      }
       await load();
     }catch(e){setErr(e.message||"บันทึกผลไม่สำเร็จ");}
     finally{setBusy("");}

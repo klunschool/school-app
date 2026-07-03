@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v51";
+const CACHE = "school-app-github-v52";
 const ASSETS = [
   "./",
   "./index.html",
