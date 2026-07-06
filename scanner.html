@@ -20,7 +20,7 @@
     @keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
     @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
     #qr-reader{width:100%!important;}
-    #qr-reader video{border-radius:12px!important;}
+    #qr-reader video{border-radius:12px!important;object-fit:cover!important;}
     #qr-reader__scan_region{border-radius:12px!important;}
   </style>
 </head>
@@ -78,6 +78,7 @@ function App(){
   const scannerRef=useRef(null);
   const hardwareInputRef=useRef(null);
   const html5QrRef=useRef(null);
+  const cameraTrackRef=useRef(null);
   const scanLockRef=useRef(false);
   const recentScanRef=useRef({value:"",time:0});
   const audioContextRef=useRef(null);
@@ -168,7 +169,7 @@ function App(){
       if(navigator.vibrate)navigator.vibrate(success?[80]:[120,80,120]);
       return success;
     }finally{
-      setTimeout(()=>{scanLockRef.current=false;},650);
+      setTimeout(()=>{scanLockRef.current=false;},250);
     }
   }
 
@@ -199,14 +200,19 @@ function App(){
       });
       html5QrRef.current=html5Qr;
       html5Qr.start(
-        {facingMode:"environment"},
         {
-          fps:20,
-          aspectRatio:1.333,
+          facingMode:{ideal:"environment"},
+          width:{ideal:1280},
+          height:{ideal:720},
+          frameRate:{ideal:30,min:20}
+        },
+        {
+          fps:30,
+          aspectRatio:1.777,
           disableFlip:true,
           qrbox:(viewWidth,viewHeight)=>({
-            width:Math.floor(Math.min(viewWidth*0.92,360)),
-            height:Math.floor(Math.min(viewHeight*0.62,240))
+            width:Math.floor(Math.min(viewWidth*0.94,420)),
+            height:Math.floor(Math.min(viewHeight*0.42,190))
           })
         },
         async(decodedText)=>{
@@ -217,9 +223,19 @@ function App(){
         // Continuous autofocus improves barcode pickup on supported Android cameras.
         const video=document.querySelector("#qr-reader video");
         const track=video?.srcObject?.getVideoTracks?.()[0];
+        cameraTrackRef.current=track||null;
         const capabilities=track?.getCapabilities?.()||{};
-        if(track&&Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes("continuous")){
-          track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{});
+        if(track){
+          const advanced=[];
+          if(Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes("continuous")){
+            advanced.push({focusMode:"continuous"});
+          }
+          track.applyConstraints({
+            width:{ideal:1280},
+            height:{ideal:720},
+            frameRate:{ideal:30,min:20},
+            ...(advanced.length?{advanced}:{})
+          }).catch(()=>{});
         }
       }).catch(()=>{setScanning(false);alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง");});
     },300);
@@ -230,6 +246,7 @@ function App(){
       html5QrRef.current.stop().catch(()=>{});
       html5QrRef.current=null;
     }
+    cameraTrackRef.current=null;
     scanLockRef.current=false;
     recentScanRef.current={value:"",time:0};
     setScanning(false);
