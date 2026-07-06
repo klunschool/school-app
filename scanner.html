@@ -200,12 +200,7 @@ function App(){
       });
       html5QrRef.current=html5Qr;
       html5Qr.start(
-        {
-          facingMode:{ideal:"environment"},
-          width:{ideal:1280},
-          height:{ideal:720},
-          frameRate:{ideal:30,min:20}
-        },
+        {facingMode:"environment"},
         {
           fps:30,
           aspectRatio:1.777,
@@ -226,16 +221,14 @@ function App(){
         cameraTrackRef.current=track||null;
         const capabilities=track?.getCapabilities?.()||{};
         if(track){
-          const advanced=[];
-          if(Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes("continuous")){
-            advanced.push({focusMode:"continuous"});
-          }
           track.applyConstraints({
             width:{ideal:1280},
             height:{ideal:720},
-            frameRate:{ideal:30,min:20},
-            ...(advanced.length?{advanced}:{})
+            frameRate:{ideal:30}
           }).catch(()=>{});
+          if(Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes("continuous")){
+            track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{});
+          }
         }
       }).catch(()=>{setScanning(false);alert("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง");});
     },300);
