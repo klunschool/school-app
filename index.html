@@ -222,6 +222,17 @@ function formatThaiTime(value){
     timeZone:"Asia/Bangkok",
   });
 }
+function formatThaiDate(value){
+  if(!value)return "-";
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return "-";
+  return date.toLocaleDateString("th-TH",{
+    day:"numeric",
+    month:"long",
+    year:"numeric",
+    timeZone:"Asia/Bangkok",
+  });
+}
 function localDateISO(date=new Date()){
   return new Intl.DateTimeFormat("en-CA",{
     year:"numeric",month:"2-digit",day:"2-digit",timeZone:"Asia/Bangkok"
@@ -904,9 +915,25 @@ function Announce({token,profile}){
       </div>}
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>ประกาศทั้งหมด</div>
-        {loading?<Spin/>:list.length===0?<Empty icon="📭" msg="ยังไม่มีประกาศ"/>:list.map((a,i)=>(
-          <div key={a.id} style={{padding:"12px 0",borderBottom:i<list.length-1?`1px solid ${C.g100}`:"none"}}>
-            <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>{a.pinned&&<span style={{marginTop:1}}>📌</span>}<div style={{minWidth:0,flex:1}}><div style={{fontWeight:800,fontSize:15,color:C.navy,lineHeight:1.4}}>{a.title}</div>{a.body&&<div style={{fontSize:13,color:C.g600,marginTop:8,whiteSpace:"pre-line",lineHeight:1.7,wordBreak:"break-word"}}>{a.body}</div>}{a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:700,marginTop:10,display:"inline-block"}}>{a.tag}</span>}</div></div>
+        {loading?<Spin/>:list.length===0?<Empty icon="📭" msg="ยังไม่มีประกาศ"/>:list.map((a)=>(
+          <div key={a.id} style={{background:C.g50,border:`1px solid ${C.g100}`,borderRadius:14,padding:14,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:9}}>
+              {a.pinned&&<span style={{fontSize:17,lineHeight:"22px",flexShrink:0}}>📌</span>}
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontWeight:800,fontSize:16,color:C.navy,lineHeight:1.45,wordBreak:"break-word"}}>{a.title}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:7,color:C.g400,fontSize:12,fontWeight:700}}>
+                  <span>🗓️</span>
+                  <span>ประกาศวันที่ {formatThaiDate(a.created_at)}</span>
+                </div>
+              </div>
+            </div>
+            {a.body&&<div style={{fontSize:14,color:C.g700,marginTop:12,lineHeight:1.85,wordBreak:"break-word"}}>
+              {String(a.body).split(/\n+/).filter(Boolean).map((p,idx)=><p key={idx} style={{marginBottom:idx<String(a.body).split(/\n+/).filter(Boolean).length-1?10:0}}>{p}</p>)}
+            </div>}
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
+              {a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>🏷️ {a.tag}</span>}
+              {a.pinned&&<span style={{background:C.redL,color:C.red,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>ปักหมุด</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -1371,7 +1398,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       {/* ประกาศ */}
       {data.ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {data.ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.g900,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:4,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
+        {data.ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.g900,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
       </div>}
     </div>
   );
@@ -1436,7 +1463,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
       </div>
       {ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.navy,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:4,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
+        {ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.navy,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
       </div>}
     </div>
   );
