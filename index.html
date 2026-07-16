@@ -919,10 +919,20 @@ function Announce({token,profile}){
   const [editing,setEditing]=useState(null);
   const [editImageFile,setEditImageFile]=useState(null);
   const [removeEditImage,setRemoveEditImage]=useState(false);
+  const [isHomeroomTeacher,setIsHomeroomTeacher]=useState(false);
   const role=String(profile?.role||"").toLowerCase();
-  const canCreateAnnouncement=["teacher","teacher_parent","admin"].includes(role);
+  const canCreateAnnouncement=role==="admin"||isHomeroomTeacher;
   const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
   useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    let active=true;
+    if(role==="admin"){setIsHomeroomTeacher(false);return;}
+    if(!["teacher","teacher_parent"].includes(role)){setIsHomeroomTeacher(false);return;}
+    sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id&limit=1`,{token})
+      .then(rows=>{if(active)setIsHomeroomTeacher((rows||[]).length>0);})
+      .catch(()=>{if(active)setIsHomeroomTeacher(false);});
+    return()=>{active=false;};
+  },[token,profile.id,role]);
   async function add(){
     if(!canCreateAnnouncement||!form.title)return;setSaving(true);
     try{
@@ -953,7 +963,7 @@ function Announce({token,profile}){
     setEditImageFile(file);setRemoveEditImage(false);
   }
   function canManage(a){
-    return role==="admin"||(["teacher","teacher_parent"].includes(role)&&a.created_by===profile.id);
+    return role==="admin"||isHomeroomTeacher;
   }
   function startEdit(a){
     setEditing({id:a.id,title:a.title||"",body:a.body||"",tag:a.tag||"",pinned:!!a.pinned,image_path:a.image_path||null});

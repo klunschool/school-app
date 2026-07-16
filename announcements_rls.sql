@@ -1,5 +1,5 @@
 -- Allow authenticated users to read announcements.
--- Allow admins and teachers to create announcements from the app.
+-- Allow admins and homeroom teachers to create and manage announcements.
 
 alter table public.announcements enable row level security;
 
@@ -17,11 +17,20 @@ for insert
 to authenticated
 with check (
   created_by = auth.uid()
-  and exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.role in ('admin', 'teacher', 'teacher_parent')
+  and (
+    exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and p.role = 'admin'
+    )
+    or exists (
+      select 1
+      from public.profiles p
+      join public.teacher_class tc on tc.teacher_id = p.id
+      where p.id = auth.uid()
+        and p.role in ('teacher', 'teacher_parent')
+    )
   )
 );
 
@@ -35,13 +44,14 @@ using (
     select 1
     from public.profiles p
     where p.id = auth.uid()
-      and (
-        p.role = 'admin'
-        or (
-          p.role in ('teacher', 'teacher_parent')
-          and announcements.created_by = auth.uid()
-        )
-      )
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.profiles p
+    join public.teacher_class tc on tc.teacher_id = p.id
+    where p.id = auth.uid()
+      and p.role in ('teacher', 'teacher_parent')
   )
 )
 with check (
@@ -49,13 +59,14 @@ with check (
     select 1
     from public.profiles p
     where p.id = auth.uid()
-      and (
-        p.role = 'admin'
-        or (
-          p.role in ('teacher', 'teacher_parent')
-          and announcements.created_by = auth.uid()
-        )
-      )
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.profiles p
+    join public.teacher_class tc on tc.teacher_id = p.id
+    where p.id = auth.uid()
+      and p.role in ('teacher', 'teacher_parent')
   )
 );
 
@@ -70,13 +81,14 @@ using (
     select 1
     from public.profiles p
     where p.id = auth.uid()
-      and (
-        p.role = 'admin'
-        or (
-          p.role in ('teacher', 'teacher_parent')
-          and announcements.created_by = auth.uid()
-        )
-      )
+      and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.profiles p
+    join public.teacher_class tc on tc.teacher_id = p.id
+    where p.id = auth.uid()
+      and p.role in ('teacher', 'teacher_parent')
   )
 );
 
