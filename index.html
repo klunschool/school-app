@@ -916,7 +916,11 @@ function Grades({token,isTeacher}){
 function Announce({token,profile}){
   const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});const [saving,setSaving]=useState(false);
   const [imageFile,setImageFile]=useState(null);
-  const canCreateAnnouncement=["teacher","teacher_parent","admin"].includes(String(profile?.role||"").toLowerCase());
+  const [editing,setEditing]=useState(null);
+  const [editImageFile,setEditImageFile]=useState(null);
+  const [removeEditImage,setRemoveEditImage]=useState(false);
+  const role=String(profile?.role||"").toLowerCase();
+  const canCreateAnnouncement=["teacher","teacher_parent","admin"].includes(role);
   const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
   useEffect(()=>{load();},[load]);
   async function add(){
@@ -941,6 +945,42 @@ function Announce({token,profile}){
     if(!file.type.startsWith("image/")){alert("กรุณาเลือกไฟล์รูปภาพเท่านั้น");return;}
     if(file.size>5*1024*1024){alert("ไฟล์รูปประกาศต้องมีขนาดไม่เกิน 5 MB");return;}
     setImageFile(file);
+  }
+  function chooseEditImage(file){
+    if(!file){setEditImageFile(null);return;}
+    if(!file.type.startsWith("image/")){alert("กรุณาเลือกไฟล์รูปภาพเท่านั้น");return;}
+    if(file.size>5*1024*1024){alert("ไฟล์รูปประกาศต้องมีขนาดไม่เกิน 5 MB");return;}
+    setEditImageFile(file);setRemoveEditImage(false);
+  }
+  function canManage(a){
+    return role==="admin"||(["teacher","teacher_parent"].includes(role)&&a.created_by===profile.id);
+  }
+  function startEdit(a){
+    setEditing({id:a.id,title:a.title||"",body:a.body||"",tag:a.tag||"",pinned:!!a.pinned,image_path:a.image_path||null});
+    setEditImageFile(null);setRemoveEditImage(false);
+  }
+  async function saveEdit(){
+    if(!editing?.title)return;setSaving(true);
+    try{
+      const payload={title:editing.title,body:editing.body,tag:editing.tag,pinned:editing.pinned};
+      if(removeEditImage)payload.image_path=null;
+      if(editImageFile){
+        const ext=(editImageFile.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
+        const image_path=`${profile.id}/${Date.now()}.${ext}`;
+        await uploadAnnouncementImage(editImageFile,image_path,token);
+        payload.image_path=image_path;
+      }
+      await sbFetch(`announcements?id=eq.${editing.id}`,{method:"PATCH",token,body:JSON.stringify(payload)});
+      setEditing(null);setEditImageFile(null);setRemoveEditImage(false);load();
+    }catch(e){alert(e.message);}finally{setSaving(false);}
+  }
+  async function deleteAnnouncement(a){
+    if(!canManage(a))return;
+    if(!confirm(`ลบประกาศ "${a.title}" ใช่ไหม?`))return;
+    setSaving(true);
+    try{await sbFetch(`announcements?id=eq.${a.id}`,{method:"DELETE",token});load();}
+    catch(e){alert(e.message);}
+    finally{setSaving(false);}
   }
   const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box"};
   return(
@@ -981,7 +1021,25 @@ function Announce({token,profile}){
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
               {a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>🏷️ {a.tag}</span>}
               {a.pinned&&<span style={{background:C.redL,color:C.red,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>ปักหมุด</span>}
+              {canManage(a)&&<button onClick={()=>startEdit(a)} style={{marginLeft:"auto",border:"none",background:C.g200,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:800,cursor:"pointer"}}>แก้ไข</button>}
+              {canManage(a)&&<button onClick={()=>deleteAnnouncement(a)} disabled={saving} style={{border:"none",background:C.redL,color:C.red,borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:800,cursor:"pointer"}}>ลบ</button>}
             </div>
+            {editing?.id===a.id&&<div style={{marginTop:12,padding:12,borderRadius:12,background:C.white,border:`1px solid ${C.g200}`,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:13,fontWeight:800,color:C.navy}}>แก้ไขประกาศ</div>
+              <input style={inp} placeholder="หัวข้อ *" value={editing.title} onChange={e=>setEditing(p=>({...p,title:e.target.value}))}/>
+              <textarea style={{...inp,minHeight:80,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด" value={editing.body} onChange={e=>setEditing(p=>({...p,body:e.target.value}))}/>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}><input style={{...inp,flex:1}} placeholder="ป้ายกำกับ" value={editing.tag} onChange={e=>setEditing(p=>({...p,tag:e.target.value}))}/><label style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:C.navy,whiteSpace:"nowrap",cursor:"pointer"}}><input type="checkbox" checked={editing.pinned} onChange={e=>setEditing(p=>({...p,pinned:e.target.checked}))}/>ปักหมุด</label></div>
+              <label style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,border:`1.5px dashed ${C.g200}`,borderRadius:10,padding:"10px 12px",background:C.g50,cursor:"pointer"}}>
+                <span style={{fontSize:13,fontWeight:800,color:C.navy}}>🖼️ {editImageFile?editImageFile.name:"เปลี่ยนรูปประกาศ"}</span>
+                <span style={{fontSize:12,color:C.g400}}>ไม่เกิน 5 MB</span>
+                <input type="file" accept="image/*" onChange={e=>chooseEditImage(e.target.files?.[0]||null)} style={{display:"none"}}/>
+              </label>
+              {(editing.image_path||editImageFile)&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:C.red,fontWeight:800,cursor:"pointer"}}><input type="checkbox" checked={removeEditImage} onChange={e=>{setRemoveEditImage(e.target.checked);if(e.target.checked)setEditImageFile(null);}}/>ลบรูปประกาศ</label>}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{setEditing(null);setEditImageFile(null);setRemoveEditImage(false);}} style={{flex:1,border:"none",background:C.g100,color:C.g600,borderRadius:10,padding:10,fontWeight:800,cursor:"pointer"}}>ยกเลิก</button>
+                <button onClick={saveEdit} disabled={saving||!editing.title} style={{flex:1,border:"none",background:saving||!editing.title?C.g400:C.navy,color:C.white,borderRadius:10,padding:10,fontWeight:800,cursor:"pointer"}}>{saving?"กำลังบันทึก...":"บันทึก"}</button>
+              </div>
+            </div>}
           </div>
         ))}
       </div>

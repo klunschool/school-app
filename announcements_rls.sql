@@ -59,8 +59,9 @@ with check (
   )
 );
 
+drop policy if exists announcements_delete_staff on public.announcements;
 drop policy if exists announcements_delete_admin on public.announcements;
-create policy announcements_delete_admin
+create policy announcements_delete_staff
 on public.announcements
 for delete
 to authenticated
@@ -69,7 +70,13 @@ using (
     select 1
     from public.profiles p
     where p.id = auth.uid()
-      and p.role = 'admin'
+      and (
+        p.role = 'admin'
+        or (
+          p.role in ('teacher', 'teacher_parent')
+          and announcements.created_by = auth.uid()
+        )
+      )
   )
 );
 
