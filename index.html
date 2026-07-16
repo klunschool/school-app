@@ -1420,6 +1420,9 @@ function AdminStudentManagement({token}){
   }
   const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
   const field={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,color:C.navy,fontWeight:800,boxSizing:"border-box"};
+  const classButtons=(value,onPick,exclude="")=><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginTop:8}}>
+    {classes.filter(c=>String(c.id)!==String(exclude)).map(c=><button key={c.id} type="button" onClick={()=>onPick(String(c.id))} style={{border:`1.5px solid ${String(value)===String(c.id)?C.navy:C.g200}`,background:String(value)===String(c.id)?C.navy:C.g50,color:String(value)===String(c.id)?C.white:C.navy,borderRadius:10,padding:"8px 4px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{c.name}</button>)}
+  </div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={box}>
@@ -1432,10 +1435,12 @@ function AdminStudentManagement({token}){
           <option value="">เลือกห้องต้นทาง</option>
           {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        {classButtons(fromClass,id=>{setFromClass(id);setSelected([]);})}
         <select value={toClass} onChange={e=>setToClass(e.target.value)} style={{...field,marginTop:8}}>
           <option value="">เลือกห้องปลายทาง</option>
           {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        {classButtons(toClass,setToClass,fromClass)}
         {fromClass&&<div style={{marginTop:10,border:`1px solid ${C.g100}`,borderRadius:12,overflow:"hidden"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:10,background:C.g50}}>
             <span style={{fontSize:12,fontWeight:900,color:C.navy}}>เลือกแล้ว {selected.length}/{fromStudents.length} คน</span>
