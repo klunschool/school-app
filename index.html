@@ -165,8 +165,26 @@ async function uploadTeacherSchedule(file,path,token){
   if(!res.ok)throw new Error(d.message||tx("อัปโหลดตารางสอนไม่สำเร็จ","Could not upload timetable"));
   return d;
 }
+async function uploadAnnouncementImage(file,path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/announcement-images/${path}`,{
+    method:"POST",
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${token}`,
+      "Content-Type":file.type||"image/jpeg",
+      "x-upsert":"false"
+    },
+    body:file,
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.message||tx("อัปโหลดรูปประกาศไม่สำเร็จ","Could not upload announcement image"));
+  return d;
+}
 function teacherSchedulePublicUrl(path){
   return path?`${SUPABASE_URL}/storage/v1/object/public/teacher-schedules/${path}`:"";
+}
+function announcementImagePublicUrl(path){
+  return path?`${SUPABASE_URL}/storage/v1/object/public/announcement-images/${path}`:"";
 }
 async function getPaymentSlipUrl(path,token){
   const res=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/payment-slips/${path}`,{
@@ -897,10 +915,33 @@ function Grades({token,isTeacher}){
 // ======= ANNOUNCEMENTS =======
 function Announce({token,profile}){
   const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});const [saving,setSaving]=useState(false);
+  const [imageFile,setImageFile]=useState(null);
   const canCreateAnnouncement=["teacher","teacher_parent","admin"].includes(String(profile?.role||"").toLowerCase());
   const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
   useEffect(()=>{load();},[load]);
-  async function add(){if(!canCreateAnnouncement||!form.title)return;setSaving(true);try{await sbFetch("announcements",{method:"POST",token,body:JSON.stringify({...form,created_by:profile.id})});setForm({title:"",body:"",tag:"",pinned:false});load();}catch(e){alert(e.message);}finally{setSaving(false);}}
+  async function add(){
+    if(!canCreateAnnouncement||!form.title)return;setSaving(true);
+    try{
+      let image_path=null;
+      if(imageFile){
+        if(!imageFile.type.startsWith("image/"))throw new Error("กรุณาแนบไฟล์รูปภาพเท่านั้น");
+        if(imageFile.size>5*1024*1024)throw new Error("ไฟล์รูปประกาศต้องมีขนาดไม่เกิน 5 MB");
+        const ext=(imageFile.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
+        image_path=`${profile.id}/${Date.now()}.${ext}`;
+        await uploadAnnouncementImage(imageFile,image_path,token);
+      }
+      const payload={...form,created_by:profile.id};
+      if(image_path)payload.image_path=image_path;
+      await sbFetch("announcements",{method:"POST",token,body:JSON.stringify(payload)});
+      setForm({title:"",body:"",tag:"",pinned:false});setImageFile(null);load();
+    }catch(e){alert(e.message);}finally{setSaving(false);}
+  }
+  function chooseImage(file){
+    if(!file){setImageFile(null);return;}
+    if(!file.type.startsWith("image/")){alert("กรุณาเลือกไฟล์รูปภาพเท่านั้น");return;}
+    if(file.size>5*1024*1024){alert("ไฟล์รูปประกาศต้องมีขนาดไม่เกิน 5 MB");return;}
+    setImageFile(file);
+  }
   const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box"};
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -910,6 +951,12 @@ function Announce({token,profile}){
           <input style={inp} placeholder="หัวข้อ *" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
           <textarea style={{...inp,minHeight:68,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด" value={form.body} onChange={e=>setForm(p=>({...p,body:e.target.value}))}/>
           <div style={{display:"flex",gap:8,alignItems:"center"}}><input style={{...inp,flex:1}} placeholder="ป้ายกำกับ" value={form.tag} onChange={e=>setForm(p=>({...p,tag:e.target.value}))}/><label style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:C.navy,whiteSpace:"nowrap",cursor:"pointer"}}><input type="checkbox" checked={form.pinned} onChange={e=>setForm(p=>({...p,pinned:e.target.checked}))}/>ปักหมุด</label></div>
+          <label style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,border:`1.5px dashed ${C.g200}`,borderRadius:10,padding:"10px 12px",background:C.g50,cursor:"pointer"}}>
+            <span style={{fontSize:13,fontWeight:800,color:C.navy}}>🖼️ {imageFile?imageFile.name:"แนบรูปประกาศ"}</span>
+            <span style={{fontSize:12,color:C.g400}}>ไม่เกิน 5 MB</span>
+            <input type="file" accept="image/*" onChange={e=>chooseImage(e.target.files?.[0]||null)} style={{display:"none"}}/>
+          </label>
+          {imageFile&&<button type="button" onClick={()=>setImageFile(null)} style={{border:"none",background:C.redL,color:C.red,borderRadius:8,padding:"7px 10px",fontSize:12,fontWeight:800,cursor:"pointer",alignSelf:"flex-start"}}>ลบรูปที่แนบ</button>}
           <button onClick={add} disabled={saving||!form.title} style={{background:saving||!form.title?C.g400:`linear-gradient(135deg,${C.navy},${C.navyL})`,color:C.white,border:"none",borderRadius:10,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>{saving?"กำลังบันทึก...":"📢 เผยแพร่"}</button>
         </div>
       </div>}
@@ -930,6 +977,7 @@ function Announce({token,profile}){
             {a.body&&<div style={{fontSize:14,color:C.g700,marginTop:12,lineHeight:1.85,wordBreak:"break-word"}}>
               {String(a.body).split(/\n+/).filter(Boolean).map((p,idx)=><p key={idx} style={{marginBottom:idx<String(a.body).split(/\n+/).filter(Boolean).length-1?10:0}}>{p}</p>)}
             </div>}
+            {a.image_path&&<img src={announcementImagePublicUrl(a.image_path)} alt="" style={{width:"100%",height:"auto",maxHeight:420,objectFit:"contain",borderRadius:12,marginTop:12,background:C.white,border:`1px solid ${C.g200}`}}/>}
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
               {a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>🏷️ {a.tag}</span>}
               {a.pinned&&<span style={{background:C.redL,color:C.red,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>ปักหมุด</span>}
@@ -1398,7 +1446,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       {/* ประกาศ */}
       {data.ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {data.ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.g900,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
+        {data.ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<data.ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.g900,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}{a.image_path&&<img src={announcementImagePublicUrl(a.image_path)} alt="" style={{width:"100%",height:"auto",maxHeight:180,objectFit:"cover",borderRadius:10,marginTop:8,border:`1px solid ${C.g100}`}}/>}</div>)}
       </div>}
     </div>
   );
@@ -1463,7 +1511,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
       </div>
       {ann.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.navy,marginBottom:10}}>📢 ประกาศล่าสุด</div>
-        {ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.navy,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}</div>)}
+        {ann.map((a,i)=><div key={a.id} style={{padding:"10px 0",borderBottom:i<ann.length-1?`1px solid ${C.g100}`:"none"}}><div style={{fontWeight:700,fontSize:13,color:C.navy,lineHeight:1.4}}>{a.pinned?"📌 ":""}{a.title}</div><div style={{fontSize:11,color:C.g400,fontWeight:700,marginTop:3}}>🗓️ {formatThaiDate(a.created_at)}</div>{a.body&&<div style={{fontSize:12,color:C.g600,marginTop:6,lineHeight:1.55,whiteSpace:"pre-line",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{a.body}</div>}{a.image_path&&<img src={announcementImagePublicUrl(a.image_path)} alt="" style={{width:"100%",height:"auto",maxHeight:180,objectFit:"cover",borderRadius:10,marginTop:8,border:`1px solid ${C.g100}`}}/>}</div>)}
       </div>}
     </div>
   );
