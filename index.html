@@ -1128,6 +1128,7 @@ function Messages({token,profile}){
 function ParentTeacherTalk({token,profile,role,student=null}){
   const [students,setStudents]=useState([]);
   const [selected,setSelected]=useState(student||null);
+  const [unreadByStudent,setUnreadByStudent]=useState({});
   const [messages,setMessages]=useState([]);
   const [body,setBody]=useState("");
   const [loading,setLoading]=useState(true);
@@ -1146,6 +1147,22 @@ function ParentTeacherTalk({token,profile,role,student=null}){
           const ids=(links||[]).map(x=>x.class_id).filter(Boolean);
           stu=ids.length?await sbFetch(`students?class_id=in.(${ids.join(",")})&select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc`,{token}).catch(()=>[]):[];
         }
+        let unreadMap={};
+        if(stu.length){
+          const ids=stu.map(s=>s.id).filter(Boolean);
+          const readCol=isStaff?"teacher_read_at":"parent_read_at";
+          const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${ids.join(",")})&sender_id=neq.${profile.id}&${readCol}=is.null&select=id,student_id,body,created_at&order=created_at.desc`,{token}).catch(()=>[]);
+          (unread||[]).forEach(m=>{
+            if(!unreadMap[m.student_id])unreadMap[m.student_id]={count:0,lastBody:m.body,lastAt:m.created_at};
+            unreadMap[m.student_id].count+=1;
+          });
+          stu=[...stu].sort((a,b)=>{
+            const au=unreadMap[a.id]?.count||0,bu=unreadMap[b.id]?.count||0;
+            if(au!==bu)return bu-au;
+            return String(a.classes?.name||"").localeCompare(String(b.classes?.name||""),"th")||Number(a.student_no||0)-Number(b.student_no||0);
+          });
+        }
+        setUnreadByStudent(unreadMap);
         setStudents(stu);
         if(!selected&&stu.length>0)setSelected(stu[0]);
       }else if(student){
@@ -1165,6 +1182,7 @@ function ParentTeacherTalk({token,profile,role,student=null}){
           const readCol=isStaff?"teacher_read_at":"parent_read_at";
           if(list.some(m=>m.sender_id!==profile.id&&!m[readCol])){
             sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&sender_id=neq.${profile.id}&${readCol}=is.null`,{method:"PATCH",token,body:JSON.stringify({[readCol]:new Date().toISOString()})}).catch(()=>{});
+            setUnreadByStudent(p=>{const next={...p};delete next[selected.id];return next;});
           }
         })
         .catch(()=>setMessages([]));
@@ -1189,14 +1207,25 @@ function ParentTeacherTalk({token,profile,role,student=null}){
   }
   if(loading)return <Spin/>;
   const studentLabel=s=>`${s.full_name||"-"}${s.classes?.name?` · ${s.classes.name}`:""}${s.student_no?` · เลขที่ ${s.student_no}`:""}`;
+  const unreadStudents=students.filter(s=>unreadByStudent[s.id]?.count>0);
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💬 พูดคุย / ติดต่อครู</div>
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>ใช้สำหรับเรื่องการเรียน การมาเรียน งานโรงเรียน และเรื่องจำเป็นของนักเรียน</div>
+        {isStaff&&unreadStudents.length>0&&<div style={{marginTop:12,background:C.redL,border:`1px solid ${C.red}`,borderRadius:12,padding:10}}>
+          <div style={{fontSize:12,fontWeight:900,color:C.red,marginBottom:7}}>ข้อความใหม่จากผู้ปกครอง</div>
+          {unreadStudents.slice(0,5).map(s=><button key={s.id} onClick={()=>setSelected(s)} style={{width:"100%",border:"none",background:C.white,borderRadius:9,padding:"8px 10px",marginTop:6,textAlign:"left",cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:13,fontWeight:900,color:C.navy}}>{studentLabel(s)}</span>
+              <span style={{background:C.red,color:C.white,borderRadius:99,padding:"2px 7px",fontSize:11,fontWeight:900,whiteSpace:"nowrap"}}>{unreadByStudent[s.id].count} ใหม่</span>
+            </div>
+            {unreadByStudent[s.id].lastBody&&<div style={{fontSize:12,color:C.g600,marginTop:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{unreadByStudent[s.id].lastBody}</div>}
+          </button>)}
+        </div>}
         {isStaff&&<select value={selected?.id||""} onChange={e=>setSelected(students.find(s=>String(s.id)===e.target.value)||null)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
           <option value="">เลือกนักเรียน</option>
-          {students.map(s=><option key={s.id} value={s.id}>{studentLabel(s)}</option>)}
+          {students.map(s=><option key={s.id} value={s.id}>{unreadByStudent[s.id]?.count?`🔴 ${unreadByStudent[s.id].count} ใหม่ - `:""}{studentLabel(s)}</option>)}
         </select>}
         {!isStaff&&selected&&<div style={{marginTop:12,background:C.g50,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:800,color:C.navy}}>👧 {studentLabel(selected)}</div>}
       </div>
