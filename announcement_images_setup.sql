@@ -35,8 +35,15 @@ with check (
   and exists (
     select 1
     from public.profiles p
+    left join public.teacher_class tc on tc.teacher_id = p.id
     where p.id = auth.uid()
-      and p.role in ('admin', 'teacher', 'teacher_parent')
+      and (
+        p.role = 'admin'
+        or (
+          p.role in ('teacher', 'teacher_parent')
+          and tc.teacher_id is not null
+        )
+      )
   )
 );
 

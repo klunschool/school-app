@@ -914,28 +914,49 @@ function Grades({token,isTeacher}){
 
 // ======= ANNOUNCEMENTS =======
 function Announce({token,profile}){
-  const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});const [saving,setSaving]=useState(false);
+  const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false,class_id:""});const [saving,setSaving]=useState(false);
   const [imageFile,setImageFile]=useState(null);
   const [editing,setEditing]=useState(null);
   const [editImageFile,setEditImageFile]=useState(null);
   const [removeEditImage,setRemoveEditImage]=useState(false);
   const [isHomeroomTeacher,setIsHomeroomTeacher]=useState(false);
+  const [manageableClasses,setManageableClasses]=useState([]);
+  const [classLabels,setClassLabels]=useState([]);
   const role=String(profile?.role||"").toLowerCase();
   const canCreateAnnouncement=role==="admin"||isHomeroomTeacher;
   const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
   useEffect(()=>{load();},[load]);
+  useEffect(()=>{sbFetch("classes?select=id,name&order=id.asc",{token}).then(rows=>setClassLabels(rows||[])).catch(()=>setClassLabels([]));},[token]);
   useEffect(()=>{
     let active=true;
-    if(role==="admin"){setIsHomeroomTeacher(false);return;}
-    if(!["teacher","teacher_parent"].includes(role)){setIsHomeroomTeacher(false);return;}
-    sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id&limit=1`,{token})
-      .then(rows=>{if(active)setIsHomeroomTeacher((rows||[]).length>0);})
-      .catch(()=>{if(active)setIsHomeroomTeacher(false);});
+    if(role==="admin"){
+      setIsHomeroomTeacher(false);
+      sbFetch("classes?select=id,name&order=id.asc",{token}).then(rows=>{if(active)setManageableClasses(rows||[]);}).catch(()=>{if(active)setManageableClasses([]);});
+      return()=>{active=false;};
+    }
+    if(!["teacher","teacher_parent"].includes(role)){setIsHomeroomTeacher(false);setManageableClasses([]);return;}
+    sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id,classes(id,name)`,{token})
+      .then(rows=>{
+        if(!active)return;
+        const classes=(rows||[]).map(r=>r.classes||{id:r.class_id,name:`ห้อง ${r.class_id}`}).filter(Boolean);
+        setManageableClasses(classes);
+        setIsHomeroomTeacher(classes.length>0);
+        if(classes.length===1)setForm(p=>({...p,class_id:String(classes[0].id)}));
+      })
+      .catch(()=>{if(active){setIsHomeroomTeacher(false);setManageableClasses([]);}});
     return()=>{active=false;};
   },[token,profile.id,role]);
+  const manageableClassIds=manageableClasses.map(c=>Number(c.id));
+  const className=id=>{
+    if(!id)return "ทั้งโรงเรียน";
+    return classLabels.find(c=>Number(c.id)===Number(id))?.name||manageableClasses.find(c=>Number(c.id)===Number(id))?.name||`ห้อง ${id}`;
+  };
   async function add(){
     if(!canCreateAnnouncement||!form.title)return;setSaving(true);
     try{
+      const selectedClassId=form.class_id?Number(form.class_id):null;
+      if(role!=="admin"&&!selectedClassId)throw new Error("กรุณาเลือกห้องเรียนของครูประจำชั้น");
+      if(role!=="admin"&&!manageableClassIds.includes(selectedClassId))throw new Error("ครูประจำชั้นเพิ่มประกาศได้เฉพาะห้องที่รับผิดชอบ");
       let image_path=null;
       if(imageFile){
         if(!imageFile.type.startsWith("image/"))throw new Error("กรุณาแนบไฟล์รูปภาพเท่านั้น");
@@ -944,10 +965,10 @@ function Announce({token,profile}){
         image_path=`${profile.id}/${Date.now()}.${ext}`;
         await uploadAnnouncementImage(imageFile,image_path,token);
       }
-      const payload={...form,created_by:profile.id};
+      const payload={title:form.title,body:form.body,tag:form.tag,pinned:form.pinned,class_id:selectedClassId,created_by:profile.id};
       if(image_path)payload.image_path=image_path;
       await sbFetch("announcements",{method:"POST",token,body:JSON.stringify(payload)});
-      setForm({title:"",body:"",tag:"",pinned:false});setImageFile(null);load();
+      setForm({title:"",body:"",tag:"",pinned:false,class_id:role==="admin"?"":(manageableClasses.length===1?String(manageableClasses[0].id):"")});setImageFile(null);load();
     }catch(e){alert(e.message);}finally{setSaving(false);}
   }
   function chooseImage(file){
@@ -963,16 +984,19 @@ function Announce({token,profile}){
     setEditImageFile(file);setRemoveEditImage(false);
   }
   function canManage(a){
-    return role==="admin"||isHomeroomTeacher;
+    return role==="admin"||(["teacher","teacher_parent"].includes(role)&&manageableClassIds.includes(Number(a.class_id)));
   }
   function startEdit(a){
-    setEditing({id:a.id,title:a.title||"",body:a.body||"",tag:a.tag||"",pinned:!!a.pinned,image_path:a.image_path||null});
+    setEditing({id:a.id,title:a.title||"",body:a.body||"",tag:a.tag||"",pinned:!!a.pinned,class_id:a.class_id?String(a.class_id):"",image_path:a.image_path||null});
     setEditImageFile(null);setRemoveEditImage(false);
   }
   async function saveEdit(){
     if(!editing?.title)return;setSaving(true);
     try{
-      const payload={title:editing.title,body:editing.body,tag:editing.tag,pinned:editing.pinned};
+      const selectedClassId=editing.class_id?Number(editing.class_id):null;
+      if(role!=="admin"&&!selectedClassId)throw new Error("กรุณาเลือกห้องเรียนของครูประจำชั้น");
+      if(role!=="admin"&&!manageableClassIds.includes(selectedClassId))throw new Error("ครูประจำชั้นแก้ไขได้เฉพาะห้องที่รับผิดชอบ");
+      const payload={title:editing.title,body:editing.body,tag:editing.tag,pinned:editing.pinned,class_id:selectedClassId};
       if(removeEditImage)payload.image_path=null;
       if(editImageFile){
         const ext=(editImageFile.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
@@ -1000,6 +1024,10 @@ function Announce({token,profile}){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <input style={inp} placeholder="หัวข้อ *" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
           <textarea style={{...inp,minHeight:68,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด" value={form.body} onChange={e=>setForm(p=>({...p,body:e.target.value}))}/>
+          <select style={inp} value={form.class_id} onChange={e=>setForm(p=>({...p,class_id:e.target.value}))}>
+            {role==="admin"&&<option value="">ทั้งโรงเรียน</option>}
+            {manageableClasses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
           <div style={{display:"flex",gap:8,alignItems:"center"}}><input style={{...inp,flex:1}} placeholder="ป้ายกำกับ" value={form.tag} onChange={e=>setForm(p=>({...p,tag:e.target.value}))}/><label style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:C.navy,whiteSpace:"nowrap",cursor:"pointer"}}><input type="checkbox" checked={form.pinned} onChange={e=>setForm(p=>({...p,pinned:e.target.checked}))}/>ปักหมุด</label></div>
           <label style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,border:`1.5px dashed ${C.g200}`,borderRadius:10,padding:"10px 12px",background:C.g50,cursor:"pointer"}}>
             <span style={{fontSize:13,fontWeight:800,color:C.navy}}>🖼️ {imageFile?imageFile.name:"แนบรูปประกาศ"}</span>
@@ -1029,6 +1057,7 @@ function Announce({token,profile}){
             </div>}
             {a.image_path&&<img src={announcementImagePublicUrl(a.image_path)} alt="" style={{width:"100%",height:"auto",maxHeight:420,objectFit:"contain",borderRadius:12,marginTop:12,background:C.white,border:`1px solid ${C.g200}`}}/>}
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
+              <span style={{background:C.g100,color:C.navy,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>🏫 {className(a.class_id)}</span>
               {a.tag&&<span style={{background:C.goldP,color:C.gold,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>🏷️ {a.tag}</span>}
               {a.pinned&&<span style={{background:C.redL,color:C.red,borderRadius:8,padding:"4px 10px",fontSize:12,fontWeight:800}}>ปักหมุด</span>}
               {canManage(a)&&<button onClick={()=>startEdit(a)} style={{marginLeft:"auto",border:"none",background:C.g200,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:800,cursor:"pointer"}}>แก้ไข</button>}
@@ -1038,6 +1067,10 @@ function Announce({token,profile}){
               <div style={{fontSize:13,fontWeight:800,color:C.navy}}>แก้ไขประกาศ</div>
               <input style={inp} placeholder="หัวข้อ *" value={editing.title} onChange={e=>setEditing(p=>({...p,title:e.target.value}))}/>
               <textarea style={{...inp,minHeight:80,resize:"vertical",fontFamily:"inherit"}} placeholder="รายละเอียด" value={editing.body} onChange={e=>setEditing(p=>({...p,body:e.target.value}))}/>
+              <select style={inp} value={editing.class_id} onChange={e=>setEditing(p=>({...p,class_id:e.target.value}))}>
+                {role==="admin"&&<option value="">ทั้งโรงเรียน</option>}
+                {manageableClasses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
               <div style={{display:"flex",gap:8,alignItems:"center"}}><input style={{...inp,flex:1}} placeholder="ป้ายกำกับ" value={editing.tag} onChange={e=>setEditing(p=>({...p,tag:e.target.value}))}/><label style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:C.navy,whiteSpace:"nowrap",cursor:"pointer"}}><input type="checkbox" checked={editing.pinned} onChange={e=>setEditing(p=>({...p,pinned:e.target.checked}))}/>ปักหมุด</label></div>
               <label style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,border:`1.5px dashed ${C.g200}`,borderRadius:10,padding:"10px 12px",background:C.g50,cursor:"pointer"}}>
                 <span style={{fontSize:13,fontWeight:800,color:C.navy}}>🖼️ {editImageFile?editImageFile.name:"เปลี่ยนรูปประกาศ"}</span>
