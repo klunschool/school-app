@@ -508,11 +508,12 @@ function Login({onLogin}){
 }
 
 // ======= ICON BUTTON =======
-function IconBtn({icon,label,bg,onClick}){
+function IconBtn({icon,label,bg,onClick,badge=0}){
   return(
     <button className="menu-btn" onClick={onClick} style={{background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:7,padding:"4px 0",transition:"transform 0.12s"}}>
-      <div style={{width:62,height:62,borderRadius:99,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,boxShadow:"0 4px 14px rgba(0,0,0,0.18)"}}>
+      <div style={{width:62,height:62,borderRadius:99,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,boxShadow:"0 4px 14px rgba(0,0,0,0.18)",position:"relative"}}>
         {icon}
+        {badge>0&&<span style={{position:"absolute",top:-3,right:-3,minWidth:22,height:22,borderRadius:99,background:C.red,color:C.white,border:`2px solid ${C.white}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,padding:"0 5px"}}>{badge>99?"99+":badge}</span>}
       </div>
       <div style={{fontSize:12,fontWeight:700,color:C.navy,textAlign:"center",lineHeight:1.3,maxWidth:72}}>{label}</div>
     </button>
@@ -1123,6 +1124,103 @@ function Messages({token,profile}){
   );
 }
 
+// ======= PARENT-TEACHER TALK =======
+function ParentTeacherTalk({token,profile,role,student=null}){
+  const [students,setStudents]=useState([]);
+  const [selected,setSelected]=useState(student||null);
+  const [messages,setMessages]=useState([]);
+  const [body,setBody]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [sending,setSending]=useState(false);
+  const isStaff=["teacher","teacher_parent","admin"].includes(role);
+  const load=useCallback(async()=>{
+    setLoading(true);
+    try{
+      if(isStaff){
+        let stu=[];
+        if(role==="admin"){
+          const rows=await sbFetch("students?select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[]);
+          stu=rows||[];
+        }else{
+          const links=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
+          const ids=(links||[]).map(x=>x.class_id).filter(Boolean);
+          stu=ids.length?await sbFetch(`students?class_id=in.(${ids.join(",")})&select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc`,{token}).catch(()=>[]):[];
+        }
+        setStudents(stu);
+        if(!selected&&stu.length>0)setSelected(stu[0]);
+      }else if(student){
+        setStudents([student]);
+        setSelected(student);
+      }
+    }finally{setLoading(false);}
+  },[token,profile.id,role,student?.id]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    if(!selected?.id){setMessages([]);return;}
+    const loadMessages=()=>{
+      sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&select=*&order=created_at.asc`,{token})
+        .then(rows=>{
+          const list=rows||[];
+          setMessages(list);
+          const readCol=isStaff?"teacher_read_at":"parent_read_at";
+          if(list.some(m=>m.sender_id!==profile.id&&!m[readCol])){
+            sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&sender_id=neq.${profile.id}&${readCol}=is.null`,{method:"PATCH",token,body:JSON.stringify({[readCol]:new Date().toISOString()})}).catch(()=>{});
+          }
+        })
+        .catch(()=>setMessages([]));
+    };
+    loadMessages();
+    const timer=setInterval(loadMessages,15000);
+    return()=>clearInterval(timer);
+  },[token,selected?.id,profile.id,isStaff]);
+  async function send(){
+    if(!selected?.id||!body.trim())return;
+    setSending(true);
+    try{
+      const payload={student_id:selected.id,sender_id:profile.id,body:body.trim()};
+      if(!isStaff)payload.parent_id=profile.id;
+      if(isStaff)payload.teacher_id=profile.id;
+      await sbFetch("parent_teacher_messages",{method:"POST",token,body:JSON.stringify(payload)});
+      setBody("");
+      const rows=await sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&select=*&order=created_at.asc`,{token});
+      setMessages(rows||[]);
+    }catch(e){alert(e.message);}
+    finally{setSending(false);}
+  }
+  if(loading)return <Spin/>;
+  const studentLabel=s=>`${s.full_name||"-"}${s.classes?.name?` · ${s.classes.name}`:""}${s.student_no?` · เลขที่ ${s.student_no}`:""}`;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💬 พูดคุย / ติดต่อครู</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>ใช้สำหรับเรื่องการเรียน การมาเรียน งานโรงเรียน และเรื่องจำเป็นของนักเรียน</div>
+        {isStaff&&<select value={selected?.id||""} onChange={e=>setSelected(students.find(s=>String(s.id)===e.target.value)||null)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
+          <option value="">เลือกนักเรียน</option>
+          {students.map(s=><option key={s.id} value={s.id}>{studentLabel(s)}</option>)}
+        </select>}
+        {!isStaff&&selected&&<div style={{marginTop:12,background:C.g50,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:800,color:C.navy}}>👧 {studentLabel(selected)}</div>}
+      </div>
+      {selected?<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{minHeight:220,maxHeight:430,overflowY:"auto",paddingRight:2}}>
+          {messages.length===0?<Empty icon="💬" msg="ยังไม่มีข้อความ เริ่มสนทนาได้เลย"/>:messages.map(m=>{
+            const mine=m.sender_id===profile.id;
+            return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
+              <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
+                <div style={{fontSize:14,lineHeight:1.55,whiteSpace:"pre-line",wordBreak:"break-word"}}>{m.body}</div>
+                <div style={{fontSize:10,opacity:0.65,marginTop:4,textAlign:mine?"right":"left"}}>{formatThaiDateTime(m.created_at)}</div>
+              </div>
+            </div>;
+          })}
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="พิมพ์ข้อความ..." style={{flex:1,minHeight:44,maxHeight:120,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,resize:"vertical",outline:"none",fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}/>
+          <button onClick={send} disabled={sending||!body.trim()} style={{alignSelf:"stretch",border:"none",background:sending||!body.trim()?C.g400:C.navy,color:C.white,borderRadius:10,padding:"0 14px",fontWeight:800,cursor:"pointer"}}>{sending?"...":"ส่ง"}</button>
+        </div>
+      </div>:<div style={{background:C.white,borderRadius:16}}><Empty icon="👧" msg="เลือกนักเรียนเพื่อดูข้อความ"/></div>}
+    </div>
+  );
+}
+
 // ======= TUITION PHASE 1 =======
 function TuitionView({token,profile,student}){
   const isStaff=["finance","admin"].includes(profile?.role);
@@ -1490,6 +1588,7 @@ function TuitionView({token,profile,student}){
 // ======= STUDENT HOME VIEW =======
 function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const [data,setData]=useState({att:[],grades:[],ann:[]});const [loading,setLoading]=useState(true);
+  const [talkUnread,setTalkUnread]=useState(0);
   useEffect(()=>{
     const load=async()=>{
       let sid=studentId;
@@ -1502,6 +1601,10 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
         sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]),
       ]);
       setData({att:a||[],grades:g||[],ann:n||[]});setLoading(false);
+      if(["parent","teacher_parent"].includes(profile?.role)){
+        const unread=await sbFetch(`parent_teacher_messages?student_id=eq.${sid}&sender_id=neq.${profile.id}&parent_read_at=is.null&select=id`,{token}).catch(()=>[]);
+        setTalkUnread((unread||[]).length);
+      }
     };load();
   },[token,profile,studentId]);
   if(loading)return <Spin/>;
@@ -1515,6 +1618,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     ...(isParent?[{id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#2563eb,#3b82f6)",action:()=>onPageChange("schedule")}]:[]),
     {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
+    ...(isParent?[{id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>onPageChange("talk")}]:[]),
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
@@ -1559,6 +1663,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
 // ======= TEACHER HOME =======
 function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
+  const [talkUnread,setTalkUnread]=useState(0);
   useEffect(()=>{
     const load=async()=>{
       try{
@@ -1567,6 +1672,11 @@ function TeacherHomeView({token,profile,setPage,role,email}){
         const ids=tc?.length>0?tc.map(t=>t.class_id).join(","):null;
         const stu=ids?await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]):await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
         setStudents(stu||[]);
+        const stuIds=(stu||[]).map(s=>s.id).filter(Boolean);
+        if(stuIds.length){
+          const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${stuIds.join(",")})&sender_id=neq.${profile.id}&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
+          setTalkUnread((unread||[]).length);
+        }else setTalkUnread(0);
       }catch(e){}finally{setLoading(false);}
     };load();
   },[token,profile.id]);
@@ -1579,6 +1689,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
       ?{id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("schedule")}
       :{id:"grade",icon:"📊",label:tx("คะแนน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>setPage("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
+    {id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>setPage("talk")},
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
@@ -1813,6 +1924,7 @@ function ParentView({token,profile,userId}){
   if(page==="schedule")return <div><Back/><StudentSchedule token={token} studentId={sel.id}/></div>;
   if(page==="grades")return <div><Back/><Grades token={token} isTeacher={false}/></div>;
   if(page==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
+  if(page==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role="parent" student={sel}/></div>;
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name} role="parent"/></div>;
   if(page==="tuition")return <div><Back/><TuitionView token={token} profile={profile} student={sel}/></div>;
@@ -2004,6 +2116,7 @@ function App(){
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
+      if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
     }
