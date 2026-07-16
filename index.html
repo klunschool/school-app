@@ -229,8 +229,12 @@ function Spin(){return <div style={{display:"flex",justifyContent:"center",paddi
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
 function classSortValue(name){
   const text=String(name||"");
+  const k=text.match(/^(ตอ\.?|เตรียมอนุบาล)\s*\/?\s*(\d+)?/);
+  if(k)return 10+Number(k[2]||1);
+  const a=text.match(/^อ\.?\s*(\d+)\s*\/\s*(\d+)/);
+  if(a)return 100+Number(a[1])*10+Number(a[2]);
   const m=text.match(/(\d+)\s*\/\s*(\d+)/);
-  if(m)return Number(m[1])*100+Number(m[2]);
+  if(m)return 1000+Number(m[1])*100+Number(m[2]);
   return 9999;
 }
 function formatThaiTime(value){
@@ -1364,6 +1368,102 @@ function AdminReports({token}){
   );
 }
 
+// ======= ADMIN STUDENT MANAGEMENT =======
+function AdminStudentManagement({token}){
+  const [classes,setClasses]=useState([]);
+  const [students,setStudents]=useState([]);
+  const [fromClass,setFromClass]=useState("");
+  const [toClass,setToClass]=useState("");
+  const [selected,setSelected]=useState([]);
+  const [query,setQuery]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState("");
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const [cls,stu]=await Promise.all([
+      sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
+      sbFetch("students?select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
+    ]);
+    const sortedClasses=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
+    const sortedStudents=[...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)||String(a.full_name).localeCompare(String(b.full_name),"th"));
+    setClasses(sortedClasses);setStudents(sortedStudents);setLoading(false);
+  },[token]);
+  useEffect(()=>{load();},[load]);
+  if(loading)return <Spin/>;
+  const fromStudents=students.filter(s=>String(s.class_id)===String(fromClass));
+  const deleteList=students.filter(s=>{
+    const q=query.trim().toLowerCase();
+    if(!q)return true;
+    return String(s.full_name||"").toLowerCase().includes(q)||String(s.classes?.name||"").toLowerCase().includes(q)||String(s.student_no||"").includes(q);
+  }).slice(0,80);
+  const toggle=id=>setSelected(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  async function moveStudents(){
+    if(selected.length===0||!toClass)return alert("กรุณาเลือกนักเรียนและห้องปลายทาง");
+    const target=classes.find(c=>String(c.id)===String(toClass));
+    if(!confirm(`ยืนยันย้ายนักเรียน ${selected.length} คน ไป ${target?.name||"ห้องปลายทาง"} ?`))return;
+    setBusy("move");
+    try{
+      await sbFetch("rpc/admin_move_students",{method:"POST",token,body:JSON.stringify({p_student_ids:selected.map(Number),p_class_id:Number(toClass)})});
+      setSelected([]);await load();alert("ย้ายชั้นเรียบร้อย");
+    }catch(e){alert(e.message);}
+    finally{setBusy("");}
+  }
+  async function deleteStudent(s){
+    const text=prompt(`ต้องการลบนักเรียนคนนี้ใช่ไหม?\n\n${s.full_name}\n${s.classes?.name||"-"} เลขที่ ${s.student_no||"-"}\n\nพิมพ์คำว่า ลบ เพื่อยืนยัน`);
+    if(text!=="ลบ")return;
+    setBusy(`delete-${s.id}`);
+    try{
+      await sbFetch("rpc/admin_delete_student",{method:"POST",token,body:JSON.stringify({p_student_id:Number(s.id)})});
+      await load();alert("ลบนักเรียนเรียบร้อย");
+    }catch(e){alert(e.message);}
+    finally{setBusy("");}
+  }
+  const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
+  const field={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,color:C.navy,fontWeight:800,boxSizing:"border-box"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={box}>
+        <div style={{fontSize:17,fontWeight:900,color:C.navy}}>🎓 จัดการนักเรียน</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:2}}>สำหรับย้ายชั้นปีการศึกษาใหม่ และลบนักเรียนที่ลาออก</div>
+      </div>
+      <div style={box}>
+        <div style={{fontSize:15,fontWeight:900,color:C.navy,marginBottom:10}}>เลื่อนชั้น / ย้ายห้อง</div>
+        <select value={fromClass} onChange={e=>{setFromClass(e.target.value);setSelected([]);}} style={field}>
+          <option value="">เลือกห้องต้นทาง</option>
+          {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={toClass} onChange={e=>setToClass(e.target.value)} style={{...field,marginTop:8}}>
+          <option value="">เลือกห้องปลายทาง</option>
+          {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {fromClass&&<div style={{marginTop:10,border:`1px solid ${C.g100}`,borderRadius:12,overflow:"hidden"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:10,background:C.g50}}>
+            <span style={{fontSize:12,fontWeight:900,color:C.navy}}>เลือกแล้ว {selected.length}/{fromStudents.length} คน</span>
+            <button onClick={()=>setSelected(selected.length===fromStudents.length?[]:fromStudents.map(s=>s.id))} style={{border:"none",background:"transparent",color:C.navy,fontSize:12,fontWeight:900,cursor:"pointer"}}>{selected.length===fromStudents.length?"ยกเลิกทั้งหมด":"เลือกทั้งห้อง"}</button>
+          </div>
+          <div style={{maxHeight:260,overflowY:"auto"}}>
+            {fromStudents.map(s=><label key={s.id} style={{display:"flex",gap:9,alignItems:"center",padding:"9px 10px",borderTop:`1px solid ${C.g100}`,cursor:"pointer"}}>
+              <input type="checkbox" checked={selected.includes(s.id)} onChange={()=>toggle(s.id)} style={{width:18,height:18,accentColor:C.navy}}/>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>เลขที่ {s.student_no||"-"}</div></div>
+            </label>)}
+          </div>
+        </div>}
+        <button onClick={moveStudents} disabled={busy==="move"||selected.length===0||!toClass} style={{width:"100%",marginTop:12,border:"none",background:busy==="move"||selected.length===0||!toClass?C.g400:C.navy,color:C.white,borderRadius:10,padding:12,fontWeight:900,cursor:"pointer"}}>{busy==="move"?"กำลังย้าย...":"ย้ายชั้น/ย้ายห้อง"}</button>
+      </div>
+      <div style={box}>
+        <div style={{fontSize:15,fontWeight:900,color:C.red,marginBottom:10}}>ลบนักเรียนที่ลาออก</div>
+        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="ค้นหาชื่อ ห้อง หรือเลขที่" style={{...field,fontWeight:700,color:C.g700}}/>
+        <div style={{marginTop:10,maxHeight:360,overflowY:"auto"}}>
+          {deleteList.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
+            <div><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
+            <button onClick={()=>deleteStudent(s)} disabled={busy===`delete-${s.id}`} style={{border:"none",background:C.redL,color:C.red,borderRadius:9,padding:"7px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`delete-${s.id}`?"...":"ลบ"}</button>
+          </div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ======= TUITION PHASE 1 =======
 function TuitionView({token,profile,student}){
   const isStaff=["finance","admin"].includes(profile?.role);
@@ -1837,6 +1937,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
+  if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
@@ -2261,6 +2362,7 @@ function App(){
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
+      if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
