@@ -1261,7 +1261,7 @@ function AdminReports({token}){
       const [classes,students,parents,ann,talk,leave]=await Promise.all([
         sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
         sbFetch("students?select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[]),
-        sbFetch("parent_student?select=student_id,parent_id",{token}).catch(()=>[]),
+        sbFetch("rpc/admin_parent_link_report",{method:"POST",token,body:"{}"}).catch(()=>sbFetch("parent_student?select=student_id,parent_id",{token}).catch(()=>[])),
         sbFetch("announcements?select=id,title,class_id,pinned,created_at&order=created_at.desc&limit=200",{token}).catch(()=>[]),
         sbFetch("parent_teacher_messages?select=id,student_id,parent_id,teacher_id,sender_id,body,created_at,parent_read_at,teacher_read_at&order=created_at.desc&limit=200",{token}).catch(()=>[]),
         sbFetch("leave_requests?select=id,status,student_id,created_at,leave_date,students(class_id)&order=created_at.desc&limit=200",{token}).catch(()=>[])
