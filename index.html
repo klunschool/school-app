@@ -886,13 +886,14 @@ function Grades({token,isTeacher}){
 // ======= ANNOUNCEMENTS =======
 function Announce({token,profile}){
   const [list,setList]=useState([]);const [loading,setLoading]=useState(true);const [form,setForm]=useState({title:"",body:"",tag:"",pinned:false});const [saving,setSaving]=useState(false);
+  const canCreateAnnouncement=["teacher","teacher_parent","admin"].includes(String(profile?.role||"").toLowerCase());
   const load=useCallback(()=>{sbFetch("announcements?select=*&order=pinned.desc,created_at.desc",{token}).then(a=>setList(a||[])).finally(()=>setLoading(false));},[token]);
   useEffect(()=>{load();},[load]);
-  async function add(){if(!form.title)return;setSaving(true);try{await sbFetch("announcements",{method:"POST",token,body:JSON.stringify({...form,created_by:profile.id})});setForm({title:"",body:"",tag:"",pinned:false});load();}catch(e){alert(e.message);}finally{setSaving(false);}}
+  async function add(){if(!canCreateAnnouncement||!form.title)return;setSaving(true);try{await sbFetch("announcements",{method:"POST",token,body:JSON.stringify({...form,created_by:profile.id})});setForm({title:"",body:"",tag:"",pinned:false});load();}catch(e){alert(e.message);}finally{setSaving(false);}}
   const inp={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,outline:"none",boxSizing:"border-box"};
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      {profile?.role==="teacher"&&<div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+      {canCreateAnnouncement&&<div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>➕ สร้างประกาศ</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <input style={inp} placeholder="หัวข้อ *" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
@@ -1823,6 +1824,7 @@ function App(){
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
+      if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
     }
