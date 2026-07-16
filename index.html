@@ -1280,6 +1280,7 @@ function AdminReports({token}){
   const ann=data.ann.filter(a=>classId==="all"||!a.class_id||String(a.class_id)===classId);
   const talk=data.talk.filter(m=>studentIds.has(m.student_id));
   const unreadTalk=talk.filter(m=>m.parent_id&&!m.teacher_read_at);
+  const talkStudentCount=new Set(talk.map(m=>m.student_id)).size;
   const leave=data.leave.filter(x=>studentIds.has(x.student_id));
   const pendingLeave=leave.filter(x=>x.status==="pending");
   const studentMap=Object.fromEntries(data.students.map(s=>[s.id,s]));
@@ -1325,7 +1326,7 @@ function AdminReports({token}){
         {card("นักเรียน",students.length,C.navy)}
         {card("ผูกผู้ปกครอง",linkedIds.size,C.green,`ยังไม่มี ${noParent.length} คน`)}
         {card("ประกาศ",ann.length,C.gold)}
-        {card("ข้อความใหม่",unreadTalk.length,C.red,`ทั้งหมด ${talk.length} ข้อความ`)}
+        {card("การพูดคุย",talk.length,C.red,`นักเรียน ${talkStudentCount} คน · ใหม่ ${unreadTalk.length}`)}
         {card("ใบลา",leave.length,C.yellow,`รอตรวจ ${pendingLeave.length}`)}
         {card("ห้องเรียน",classId==="all"?data.classes.length:1,C.green)}
       </div>
