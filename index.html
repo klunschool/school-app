@@ -1427,7 +1427,7 @@ function AdminStudentManagement({token}){
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={box}>
         <div style={{fontSize:17,fontWeight:900,color:C.navy}}>🎓 จัดการนักเรียน</div>
-        <div style={{fontSize:12,color:C.g400,marginTop:2}}>สำหรับย้ายชั้นปีการศึกษาใหม่ และลบนักเรียนที่ลาออก</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:2}}>สำหรับย้ายชั้นปีการศึกษาใหม่ และจัดการรายชื่อนักเรียนในระบบ</div>
       </div>
       <div style={box}>
         <div style={{fontSize:15,fontWeight:900,color:C.navy,marginBottom:10}}>เลื่อนชั้น / ย้ายห้อง</div>
@@ -1456,7 +1456,8 @@ function AdminStudentManagement({token}){
         <button onClick={moveStudents} disabled={busy==="move"||selected.length===0||!toClass} style={{width:"100%",marginTop:12,border:"none",background:busy==="move"||selected.length===0||!toClass?C.g400:C.navy,color:C.white,borderRadius:10,padding:12,fontWeight:900,cursor:"pointer"}}>{busy==="move"?"กำลังย้าย...":"ย้ายชั้น/ย้ายห้อง"}</button>
       </div>
       <div style={box}>
-        <div style={{fontSize:15,fontWeight:900,color:C.red,marginBottom:10}}>ลบนักเรียนที่ลาออก</div>
+        <div style={{fontSize:15,fontWeight:900,color:C.red,marginBottom:4}}>ลบนักเรียนออกจากระบบ</div>
+        <div style={{fontSize:12,color:C.g400,marginBottom:10}}>ใช้เฉพาะกรณีเพิ่มผิด หรือออกจากโรงเรียนจริงเท่านั้น</div>
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="ค้นหาชื่อ ห้อง หรือเลขที่" style={{...field,fontWeight:700,color:C.g700}}/>
         <div style={{marginTop:10,maxHeight:360,overflowY:"auto"}}>
           {deleteList.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
