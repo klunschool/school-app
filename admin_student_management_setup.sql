@@ -86,9 +86,12 @@ begin
 end;
 $$;
 
-create or replace function public.admin_update_student_name(
+create or replace function public.admin_update_student(
   p_student_id bigint,
-  p_full_name text
+  p_full_name text,
+  p_student_no integer,
+  p_class_id bigint,
+  p_student_id_no text
 )
 returns jsonb
 language plpgsql
@@ -110,8 +113,15 @@ begin
     raise exception 'student name is required';
   end if;
 
+  if not exists (select 1 from public.classes c where c.id = p_class_id) then
+    raise exception 'class not found';
+  end if;
+
   update public.students
-  set full_name = clean_name
+  set full_name = clean_name,
+      student_no = p_student_no,
+      class_id = p_class_id,
+      student_id_no = nullif(trim(coalesce(p_student_id_no, '')), '')
   where id = p_student_id;
 
   if not found then
@@ -124,9 +134,9 @@ $$;
 
 revoke all on function public.admin_move_students(bigint[], bigint) from public, anon;
 revoke all on function public.admin_delete_student(bigint) from public, anon;
-revoke all on function public.admin_update_student_name(bigint, text) from public, anon;
+revoke all on function public.admin_update_student(bigint, text, integer, bigint, text) from public, anon;
 grant execute on function public.admin_move_students(bigint[], bigint) to authenticated;
 grant execute on function public.admin_delete_student(bigint) to authenticated;
-grant execute on function public.admin_update_student_name(bigint, text) to authenticated;
+grant execute on function public.admin_update_student(bigint, text, integer, bigint, text) to authenticated;
 
 notify pgrst, 'reload schema';

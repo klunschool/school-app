@@ -1382,13 +1382,14 @@ function AdminStudentManagement({token}){
   const [toClass,setToClass]=useState("");
   const [selected,setSelected]=useState([]);
   const [query,setQuery]=useState("");
+  const [editing,setEditing]=useState(null);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState("");
   const load=useCallback(async()=>{
     setLoading(true);
     const [cls,stu]=await Promise.all([
       sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
-      sbFetch("students?select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
+      sbFetch("students?select=id,full_name,student_no,class_id,student_id_no,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
     ]);
     const sortedClasses=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
     const sortedStudents=[...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)||String(a.full_name).localeCompare(String(b.full_name),"th"));
@@ -1424,16 +1425,28 @@ function AdminStudentManagement({token}){
     }catch(e){alert(e.message);}
     finally{setBusy("");}
   }
-  async function editStudentName(s){
-    const name=prompt("แก้ไขชื่อนักเรียน",s.full_name||"");
-    if(name===null)return;
-    const clean=name.trim();
-    if(!clean)return alert("กรุณากรอกชื่อ");
-    if(clean===s.full_name)return;
-    setBusy(`name-${s.id}`);
+  function startEditStudent(s){
+    setEditing({
+      id:s.id,
+      full_name:s.full_name||"",
+      student_no:s.student_no||"",
+      class_id:s.class_id?String(s.class_id):"",
+      student_id_no:s.student_id_no||""
+    });
+  }
+  async function saveStudentEdit(){
+    if(!editing?.full_name.trim())return alert("กรุณากรอกชื่อ-สกุล");
+    if(!editing.class_id)return alert("กรุณาเลือกห้องเรียน");
+    setBusy(`edit-${editing.id}`);
     try{
-      await sbFetch("rpc/admin_update_student_name",{method:"POST",token,body:JSON.stringify({p_student_id:Number(s.id),p_full_name:clean})});
-      await load();alert("แก้ไขชื่อเรียบร้อย");
+      await sbFetch("rpc/admin_update_student",{method:"POST",token,body:JSON.stringify({
+        p_student_id:Number(editing.id),
+        p_full_name:editing.full_name.trim(),
+        p_student_no:editing.student_no===""?null:Number(editing.student_no),
+        p_class_id:Number(editing.class_id),
+        p_student_id_no:String(editing.student_id_no||"").trim()
+      })});
+      setEditing(null);await load();alert("แก้ไขข้อมูลนักเรียนเรียบร้อย");
     }catch(e){alert(e.message);}
     finally{setBusy("");}
   }
@@ -1478,11 +1491,28 @@ function AdminStudentManagement({token}){
         <div style={{fontSize:15,fontWeight:900,color:C.red,marginBottom:4}}>ลบนักเรียนออกจากระบบ</div>
         <div style={{fontSize:12,color:C.g400,marginBottom:10}}>ใช้เฉพาะกรณีเพิ่มผิด หรือออกจากโรงเรียนจริงเท่านั้น</div>
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="ค้นหาชื่อ ห้อง หรือเลขที่" style={{...field,fontWeight:700,color:C.g700}}/>
+        {editing&&<div style={{marginTop:10,background:C.g50,border:`1px solid ${C.g200}`,borderRadius:12,padding:12}}>
+          <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>แก้ไขข้อมูลนักเรียน</div>
+          <input value={editing.full_name} onChange={e=>setEditing(p=>({...p,full_name:e.target.value}))} placeholder="ชื่อ-สกุล" style={{...field,fontWeight:700,color:C.g700,marginBottom:8}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <input value={editing.student_no} onChange={e=>setEditing(p=>({...p,student_no:e.target.value.replace(/[^\d]/g,"")}))} placeholder="เลขที่" inputMode="numeric" style={{...field,fontWeight:700,color:C.g700}}/>
+            <input value={editing.student_id_no} onChange={e=>setEditing(p=>({...p,student_id_no:e.target.value.replace(/\D/g,"").slice(0,13)}))} placeholder="เลขประจำตัว 13 หลัก" inputMode="numeric" maxLength="13" style={{...field,fontWeight:700,color:C.g700}}/>
+          </div>
+          <select value={editing.class_id} onChange={e=>setEditing(p=>({...p,class_id:e.target.value}))} style={{...field,marginTop:8}}>
+            <option value="">เลือกห้องเรียน</option>
+            {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {classButtons(editing.class_id,id=>setEditing(p=>({...p,class_id:id})))}
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <button onClick={saveStudentEdit} disabled={busy===`edit-${editing.id}`} style={{flex:1,border:"none",background:C.navy,color:C.white,borderRadius:10,padding:10,fontWeight:900,cursor:"pointer"}}>{busy===`edit-${editing.id}`?"กำลังบันทึก...":"บันทึกข้อมูล"}</button>
+            <button onClick={()=>setEditing(null)} style={{border:"none",background:C.g200,color:C.navy,borderRadius:10,padding:"10px 14px",fontWeight:900,cursor:"pointer"}}>ยกเลิก</button>
+          </div>
+        </div>}
         <div style={{marginTop:10,maxHeight:360,overflowY:"auto"}}>
           {deleteList.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
             <div><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>editStudentName(s)} disabled={busy===`name-${s.id}`} style={{border:"none",background:C.g100,color:C.navy,borderRadius:9,padding:"7px 9px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`name-${s.id}`?"...":"แก้ชื่อ"}</button>
+              <button onClick={()=>startEditStudent(s)} style={{border:"none",background:C.g100,color:C.navy,borderRadius:9,padding:"7px 9px",fontSize:12,fontWeight:900,cursor:"pointer"}}>แก้ไข</button>
               <button onClick={()=>deleteStudent(s)} disabled={busy===`delete-${s.id}`} style={{border:"none",background:C.redL,color:C.red,borderRadius:9,padding:"7px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`delete-${s.id}`?"...":"ลบ"}</button>
             </div>
           </div>)}
