@@ -1250,6 +1250,113 @@ function ParentTeacherTalk({token,profile,role,student=null}){
   );
 }
 
+// ======= ADMIN REPORTS =======
+function AdminReports({token}){
+  const [data,setData]=useState({classes:[],students:[],parents:[],ann:[],talk:[],leave:[]});
+  const [classId,setClassId]=useState("all");
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      const [classes,students,parents,ann,talk,leave]=await Promise.all([
+        sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
+        sbFetch("students?select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[]),
+        sbFetch("parent_student?select=student_id,parent_id",{token}).catch(()=>[]),
+        sbFetch("announcements?select=id,title,class_id,pinned,created_at&order=created_at.desc&limit=200",{token}).catch(()=>[]),
+        sbFetch("parent_teacher_messages?select=id,student_id,parent_id,teacher_id,sender_id,body,created_at,parent_read_at,teacher_read_at&order=created_at.desc&limit=200",{token}).catch(()=>[]),
+        sbFetch("leave_requests?select=id,status,student_id,created_at,leave_date,students(class_id)&order=created_at.desc&limit=200",{token}).catch(()=>[])
+      ]);
+      setData({classes:classes||[],students:students||[],parents:parents||[],ann:ann||[],talk:talk||[],leave:leave||[]});
+      setLoading(false);
+    };
+    load();
+  },[token]);
+  if(loading)return <Spin/>;
+  const students=classId==="all"?data.students:data.students.filter(s=>String(s.class_id)===classId);
+  const studentIds=new Set(students.map(s=>s.id));
+  const parentLinks=data.parents.filter(p=>studentIds.has(p.student_id));
+  const linkedIds=new Set(parentLinks.map(p=>p.student_id));
+  const noParent=students.filter(s=>!linkedIds.has(s.id));
+  const ann=data.ann.filter(a=>classId==="all"||!a.class_id||String(a.class_id)===classId);
+  const talk=data.talk.filter(m=>studentIds.has(m.student_id));
+  const unreadTalk=talk.filter(m=>m.parent_id&&!m.teacher_read_at);
+  const leave=data.leave.filter(x=>studentIds.has(x.student_id));
+  const pendingLeave=leave.filter(x=>x.status==="pending");
+  const studentMap=Object.fromEntries(data.students.map(s=>[s.id,s]));
+  const classSummary=data.classes.map(c=>{
+    const list=data.students.filter(s=>String(s.class_id)===String(c.id));
+    const ids=new Set(list.map(s=>s.id));
+    return {
+      id:c.id,
+      name:c.name,
+      students:list.length,
+      linked:data.parents.filter(p=>ids.has(p.student_id)).length,
+      messages:data.talk.filter(m=>ids.has(m.student_id)).length
+    };
+  });
+  const card=(label,value,color=C.navy,sub="")=><div style={{flex:1,minWidth:92,background:C.white,borderRadius:14,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+    <div style={{fontSize:22,fontWeight:900,color}}>{value}</div>
+    <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:2}}>{label}</div>
+    {sub&&<div style={{fontSize:11,color:C.g400,marginTop:2}}>{sub}</div>}
+  </div>;
+  const exportCsv=()=>{
+    const rows=[["ห้อง","นักเรียน","เลขที่","มีผู้ปกครอง"]];
+    students.forEach(s=>rows.push([s.classes?.name||"-",s.full_name||"-",s.student_no||"-",linkedIds.has(s.id)?"มี":"ยังไม่มี"]));
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="student-parent-report.csv";a.click();
+    URL.revokeObjectURL(url);
+  };
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+          <div><div style={{fontSize:17,fontWeight:900,color:C.navy}}>📈 รายงานผู้ดูแลระบบ</div><div style={{fontSize:12,color:C.g400,marginTop:2}}>สรุปข้อมูลโรงเรียน ผู้ปกครอง ประกาศ และการพูดคุย</div></div>
+          <button onClick={exportCsv} style={{border:"none",background:C.navy,color:C.white,borderRadius:10,padding:"9px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>ส่งออก CSV</button>
+        </div>
+        <select value={classId} onChange={e=>setClassId(e.target.value)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,fontWeight:800,color:C.navy}}>
+          <option value="all">ทุกห้องเรียน</option>
+          {data.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+        {card("นักเรียน",students.length,C.navy)}
+        {card("ผูกผู้ปกครอง",linkedIds.size,C.green,`ยังไม่มี ${noParent.length} คน`)}
+        {card("ประกาศ",ann.length,C.gold)}
+        {card("ข้อความใหม่",unreadTalk.length,C.red,`ทั้งหมด ${talk.length} ข้อความ`)}
+        {card("ใบลา",leave.length,C.yellow,`รอตรวจ ${pendingLeave.length}`)}
+        {card("ห้องเรียน",classId==="all"?data.classes.length:1,C.green)}
+      </div>
+      {noParent.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.red,marginBottom:8}}>นักเรียนที่ยังไม่ผูกผู้ปกครอง ({noParent.length})</div>
+        {noParent.slice(0,20).map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.g100}`}}>
+          <div><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
+          <span style={{fontSize:11,color:C.red,fontWeight:900}}>ยังไม่มี</span>
+        </div>)}
+      </div>}
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>สรุปตามห้องเรียน</div>
+        {classSummary.filter(c=>classId==="all"||String(c.id)===classId).map(c=><div key={c.id} style={{display:"grid",gridTemplateColumns:"1.2fr 0.7fr 0.8fr 0.8fr",gap:6,padding:"9px 0",borderBottom:`1px solid ${C.g100}`,alignItems:"center"}}>
+          <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{c.name}</div>
+          <div style={{fontSize:12,color:C.g600}}>นร. {c.students}</div>
+          <div style={{fontSize:12,color:C.green,fontWeight:800}}>ผปค. {c.linked}</div>
+          <div style={{fontSize:12,color:C.navy,fontWeight:800}}>คุย {c.messages}</div>
+        </div>)}
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>ข้อความล่าสุด</div>
+        {talk.length===0?<Empty icon="💬" msg="ยังไม่มีข้อความในช่วงล่าสุด"/>:talk.slice(0,10).map(m=>{const s=studentMap[m.student_id]||{};return <div key={m.id} style={{padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8}}><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name||"-"}</div><div style={{fontSize:11,color:C.g400,whiteSpace:"nowrap"}}>{formatThaiDateTime(m.created_at)}</div></div>
+          <div style={{fontSize:11,color:C.g400,marginTop:1}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div>
+          <div style={{fontSize:12,color:C.g700,marginTop:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.body}</div>
+        </div>})}
+      </div>
+    </div>
+  );
+}
+
 // ======= TUITION PHASE 1 =======
 function TuitionView({token,profile,student}){
   const isStaff=["finance","admin"].includes(profile?.role);
@@ -1723,6 +1830,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
+  if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
@@ -2146,6 +2254,7 @@ function App(){
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
+      if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
     }
