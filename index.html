@@ -935,17 +935,20 @@ function Announce({token,profile}){
       return()=>{active=false;};
     }
     if(!["teacher","teacher_parent"].includes(role)){setIsHomeroomTeacher(false);setManageableClasses([]);return;}
-    sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id,classes(id,name)`,{token})
+    sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token})
       .then(rows=>{
         if(!active)return;
-        const classes=(rows||[]).map(r=>r.classes||{id:r.class_id,name:`ห้อง ${r.class_id}`}).filter(Boolean);
+        const classes=(rows||[]).map(r=>{
+          const label=classLabels.find(c=>Number(c.id)===Number(r.class_id));
+          return label||{id:r.class_id,name:`ห้อง ${r.class_id}`};
+        }).filter(Boolean);
         setManageableClasses(classes);
         setIsHomeroomTeacher(classes.length>0);
         if(classes.length===1)setForm(p=>({...p,class_id:String(classes[0].id)}));
       })
       .catch(()=>{if(active){setIsHomeroomTeacher(false);setManageableClasses([]);}});
     return()=>{active=false;};
-  },[token,profile.id,role]);
+  },[token,profile.id,role,classLabels]);
   const manageableClassIds=manageableClasses.map(c=>Number(c.id));
   const className=id=>{
     if(!id)return "ทั้งโรงเรียน";
