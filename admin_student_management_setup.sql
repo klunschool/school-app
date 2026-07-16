@@ -86,9 +86,47 @@ begin
 end;
 $$;
 
+create or replace function public.admin_update_student_name(
+  p_student_id bigint,
+  p_full_name text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  clean_name text := trim(coalesce(p_full_name, ''));
+begin
+  if not exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.role = 'admin'
+  ) then
+    raise exception 'admin only';
+  end if;
+
+  if clean_name = '' then
+    raise exception 'student name is required';
+  end if;
+
+  update public.students
+  set full_name = clean_name
+  where id = p_student_id;
+
+  if not found then
+    raise exception 'student not found';
+  end if;
+
+  return jsonb_build_object('success', true, 'student_id', p_student_id, 'full_name', clean_name);
+end;
+$$;
+
 revoke all on function public.admin_move_students(bigint[], bigint) from public, anon;
 revoke all on function public.admin_delete_student(bigint) from public, anon;
+revoke all on function public.admin_update_student_name(bigint, text) from public, anon;
 grant execute on function public.admin_move_students(bigint[], bigint) to authenticated;
 grant execute on function public.admin_delete_student(bigint) to authenticated;
+grant execute on function public.admin_update_student_name(bigint, text) to authenticated;
 
 notify pgrst, 'reload schema';

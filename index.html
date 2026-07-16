@@ -1418,6 +1418,19 @@ function AdminStudentManagement({token}){
     }catch(e){alert(e.message);}
     finally{setBusy("");}
   }
+  async function editStudentName(s){
+    const name=prompt("แก้ไขชื่อนักเรียน",s.full_name||"");
+    if(name===null)return;
+    const clean=name.trim();
+    if(!clean)return alert("กรุณากรอกชื่อ");
+    if(clean===s.full_name)return;
+    setBusy(`name-${s.id}`);
+    try{
+      await sbFetch("rpc/admin_update_student_name",{method:"POST",token,body:JSON.stringify({p_student_id:Number(s.id),p_full_name:clean})});
+      await load();alert("แก้ไขชื่อเรียบร้อย");
+    }catch(e){alert(e.message);}
+    finally{setBusy("");}
+  }
   const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
   const field={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,color:C.navy,fontWeight:800,boxSizing:"border-box"};
   const classButtons=(value,onPick,exclude="")=><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginTop:8}}>
@@ -1462,7 +1475,10 @@ function AdminStudentManagement({token}){
         <div style={{marginTop:10,maxHeight:360,overflowY:"auto"}}>
           {deleteList.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
             <div><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
-            <button onClick={()=>deleteStudent(s)} disabled={busy===`delete-${s.id}`} style={{border:"none",background:C.redL,color:C.red,borderRadius:9,padding:"7px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`delete-${s.id}`?"...":"ลบ"}</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>editStudentName(s)} disabled={busy===`name-${s.id}`} style={{border:"none",background:C.g100,color:C.navy,borderRadius:9,padding:"7px 9px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`name-${s.id}`?"...":"แก้ชื่อ"}</button>
+              <button onClick={()=>deleteStudent(s)} disabled={busy===`delete-${s.id}`} style={{border:"none",background:C.redL,color:C.red,borderRadius:9,padding:"7px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`delete-${s.id}`?"...":"ลบ"}</button>
+            </div>
           </div>)}
         </div>
       </div>
