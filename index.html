@@ -35,12 +35,18 @@ const TUITION_URL="https://drive.google.com/";
 function tx(th,en){return localStorage.getItem("school_lang")==="en"?en:th;}
 
 async function sbFetch(path,options={}){
-  const {headers:extraHeaders={},token,...fetchOptions}=options;
+  const {headers:extraHeaders={},token,parseCount=false,...fetchOptions}=options;
   const res=await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{
     ...fetchOptions,
     headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token||SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation",...extraHeaders},
   });
   if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
+  if(parseCount){
+    const data=res.status===204?null:await res.json();
+    const range=res.headers.get("content-range")||"";
+    const count=Number(range.split("/")[1]);
+    return {data,count:Number.isFinite(count)?count:null};
+  }
   return res.status===204?null:res.json();
 }
 async function notifyParentApproved(requestId,token){
@@ -1928,6 +1934,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
 // ======= TEACHER HOME =======
 function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
+  const [studentCount,setStudentCount]=useState(0);
   const [talkUnread,setTalkUnread]=useState(0);
   useEffect(()=>{
     const load=async()=>{
@@ -1937,6 +1944,12 @@ function TeacherHomeView({token,profile,setPage,role,email}){
         const ids=tc?.length>0?tc.map(t=>t.class_id).join(","):null;
         const stu=ids?await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]):await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
         setStudents(stu||[]);
+        if(role==="admin"){
+          const countRows=await sbFetch("students?select=id",{token,headers:{Prefer:"count=exact"},parseCount:true}).catch(()=>({count:(stu||[]).length}));
+          setStudentCount(Number(countRows?.count ?? (stu||[]).length));
+        }else{
+          setStudentCount((stu||[]).length);
+        }
         const stuIds=(stu||[]).map(s=>s.id).filter(Boolean);
         if(stuIds.length){
           const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${stuIds.join(",")})&sender_id=neq.${profile.id}&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
@@ -1978,7 +1991,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
           </div>
         </div>
         <div style={{display:"flex",gap:10}}>
-          {[{v:students.length,l:"นักเรียน",i:"👩‍🎓"},{v:ann.length,l:"ประกาศ",i:"📢"}].map(x=>(
+          {[{v:studentCount,l:"นักเรียน",i:"👩‍🎓"},{v:ann.length,l:"ประกาศ",i:"📢"}].map(x=>(
             <div key={x.l} style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:"8px 14px",flex:1}}>
               <div style={{color:C.white,fontSize:18,fontWeight:800}}>{x.i} {x.v}</div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>{x.l}</div>
