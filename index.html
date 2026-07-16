@@ -227,6 +227,12 @@ const C={
 
 function Spin(){return <div style={{display:"flex",justifyContent:"center",padding:40}}><div style={{width:36,height:36,border:`3px solid ${C.g200}`,borderTopColor:C.navy,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>;}
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
+function classSortValue(name){
+  const text=String(name||"");
+  const m=text.match(/(\d+)\s*\/\s*(\d+)/);
+  if(m)return Number(m[1])*100+Number(m[2]);
+  return 9999;
+}
 function formatThaiTime(value){
   if(!value)return "-";
   const raw=String(value);
@@ -1294,7 +1300,7 @@ function AdminReports({token}){
       linked:data.parents.filter(p=>ids.has(p.student_id)).length,
       messages:data.talk.filter(m=>ids.has(m.student_id)).length
     };
-  });
+  }).sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
   const card=(label,value,color=C.navy,sub="")=><div style={{flex:1,minWidth:92,background:C.white,borderRadius:14,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
     <div style={{fontSize:22,fontWeight:900,color}}>{value}</div>
     <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:2}}>{label}</div>
