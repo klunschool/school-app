@@ -1339,7 +1339,7 @@ function AdminReports({token}){
       </div>}
       <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>สรุปตามห้องเรียน</div>
-        {classSummary.filter(c=>classId==="all"||String(c.id)===classId).map(c=><div key={c.id} style={{display:"grid",gridTemplateColumns:"1.2fr 0.7fr 0.8fr 0.8fr",gap:6,padding:"9px 0",borderBottom:`1px solid ${C.g100}`,alignItems:"center"}}>
+        {classSummary.filter(c=>c.students>0&&(classId==="all"||String(c.id)===classId)).map(c=><div key={c.id} style={{display:"grid",gridTemplateColumns:"1.2fr 0.7fr 0.8fr 0.8fr",gap:6,padding:"9px 0",borderBottom:`1px solid ${C.g100}`,alignItems:"center"}}>
           <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{c.name}</div>
           <div style={{fontSize:12,color:C.g600}}>นร. {c.students}</div>
           <div style={{fontSize:12,color:C.green,fontWeight:800}}>ผปค. {c.linked}</div>
