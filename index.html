@@ -189,6 +189,36 @@ async function uploadAnnouncementImage(file,path,token){
 function teacherSchedulePublicUrl(path){
   return path?`${SUPABASE_URL}/storage/v1/object/public/teacher-schedules/${path}`:"";
 }
+function storageObjectPath(path){
+  return String(path||"").split("/").map(encodeURIComponent).join("/");
+}
+async function uploadStudentPhoto(file,path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/student-photos/${storageObjectPath(path)}`,{
+    method:"POST",
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${token}`,
+      "Content-Type":file.type||"image/jpeg",
+      "x-upsert":"true"
+    },
+    body:file,
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.message||"อัปโหลดรูปนักเรียนไม่สำเร็จ");
+  return d;
+}
+async function getStudentPhotoUrl(path,token){
+  if(!path)return "";
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/student-photos/${storageObjectPath(path)}`,{
+    method:"POST",
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+    body:JSON.stringify({expiresIn:3600}),
+  });
+  const d=await res.json().catch(()=>({}));
+  if(!res.ok)throw new Error(d.message||"อ่านรูปนักเรียนไม่สำเร็จ");
+  const signed=d.signedURL||d.signedUrl||"";
+  return signed.startsWith("http")?signed:`${SUPABASE_URL}/storage/v1${signed}`;
+}
 function announcementImagePublicUrl(path){
   return path?`${SUPABASE_URL}/storage/v1/object/public/announcement-images/${path}`:"";
 }
@@ -233,6 +263,18 @@ const C={
 
 function Spin(){return <div style={{display:"flex",justifyContent:"center",padding:40}}><div style={{width:36,height:36,border:`3px solid ${C.g200}`,borderTopColor:C.navy,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>;}
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
+function StudentAvatar({path,token,size=46,fallback="👧"}){
+  const [url,setUrl]=useState("");
+  useEffect(()=>{
+    let alive=true;
+    if(!path||!token){setUrl("");return()=>{alive=false;};}
+    getStudentPhotoUrl(path,token).then(u=>{if(alive)setUrl(u);}).catch(()=>{if(alive)setUrl("");});
+    return()=>{alive=false;};
+  },[path,token]);
+  const base={width:size,height:size,borderRadius:999,background:C.goldP,border:`2px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*0.48),flexShrink:0,overflow:"hidden"};
+  if(url)return <img src={url} alt="" style={{...base,objectFit:"cover"}}/>;
+  return <div style={base}>{fallback}</div>;
+}
 function classSortValue(name){
   const text=String(name||"");
   const k=text.match(/^(ตอ\.?|เตรียมอนุบาล)\s*\/?\s*(\d+)?/);
@@ -1473,7 +1515,7 @@ function AdminStudentManagement({token}){
     setLoading(true);
     const [cls,stu]=await Promise.all([
       sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
-      sbFetch("students?select=id,full_name,student_no,class_id,student_id_no,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
+      sbFetch("students?select=id,full_name,student_no,class_id,student_id_no,photo_path,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
     ]);
     const sortedClasses=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
     const sortedStudents=[...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)||String(a.full_name).localeCompare(String(b.full_name),"th"));
@@ -1531,6 +1573,20 @@ function AdminStudentManagement({token}){
         p_student_id_no:String(editing.student_id_no||"").trim()
       })});
       setEditing(null);await load();alert("แก้ไขข้อมูลนักเรียนเรียบร้อย");
+    }catch(e){alert(e.message);}
+    finally{setBusy("");}
+  }
+  async function saveStudentPhoto(s,file){
+    if(!file)return;
+    if(!file.type.startsWith("image/"))return alert("กรุณาเลือกไฟล์รูปภาพ");
+    if(file.size>2*1024*1024)return alert("รูปภาพต้องมีขนาดไม่เกิน 2 MB");
+    const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5)||"jpg";
+    const path=`students/${s.id}-${Date.now()}.${ext}`;
+    setBusy(`photo-${s.id}`);
+    try{
+      await uploadStudentPhoto(file,path,token);
+      await sbFetch("rpc/admin_set_student_photo",{method:"POST",token,body:JSON.stringify({p_student_id:Number(s.id),p_photo_path:path})});
+      await load();alert("อัปโหลดรูปนักเรียนเรียบร้อย");
     }catch(e){alert(e.message);}
     finally{setBusy("");}
   }
@@ -1594,8 +1650,13 @@ function AdminStudentManagement({token}){
         </div>}
         <div style={{marginTop:10,maxHeight:360,overflowY:"auto"}}>
           {deleteList.map(s=><div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.g100}`}}>
-            <div><div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
+            <StudentAvatar path={s.photo_path} token={token} size={38}/>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:900,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.full_name}</div><div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div></div>
             <div style={{display:"flex",gap:6}}>
+              <label style={{border:"none",background:C.goldP,color:C.yellow,borderRadius:9,padding:"7px 9px",fontSize:12,fontWeight:900,cursor:"pointer",whiteSpace:"nowrap"}}>
+                {busy===`photo-${s.id}`?"...":"รูป"}
+                <input type="file" accept="image/*" disabled={busy===`photo-${s.id}`} onChange={e=>saveStudentPhoto(s,e.target.files?.[0])} style={{display:"none"}}/>
+              </label>
               <button onClick={()=>startEditStudent(s)} style={{border:"none",background:C.g100,color:C.navy,borderRadius:9,padding:"7px 9px",fontSize:12,fontWeight:900,cursor:"pointer"}}>แก้ไข</button>
               <button onClick={()=>deleteStudent(s)} disabled={busy===`delete-${s.id}`} style={{border:"none",background:C.redL,color:C.red,borderRadius:9,padding:"7px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{busy===`delete-${s.id}`?"...":"ลบ"}</button>
             </div>
@@ -2013,9 +2074,9 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       {/* Profile banner */}
       <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,borderRadius:20,padding:20,display:"flex",alignItems:"center",gap:14,position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",right:-10,top:-10,width:100,height:100,borderRadius:99,background:"rgba(201,162,39,0.12)"}}/>
-        <div style={{width:58,height:58,borderRadius:99,background:C.goldP,border:`3px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
-          {isParent?"👪":"👩‍🎓"}
-        </div>
+        {studentInfo?.photo_path
+          ? <StudentAvatar path={studentInfo.photo_path} token={token} size={58} fallback={isParent?"👪":"👩‍🎓"}/>
+          : <div style={{width:58,height:58,borderRadius:99,background:C.goldP,border:`3px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>{isParent?"👪":"👩‍🎓"}</div>}
         <div>
           <div style={{color:"rgba(255,255,255,0.7)",fontSize:12}}>{isParent?tx("บุตรหลาน","Child"):tx("นักเรียน","Student")}</div>
           <div style={{color:C.gold,fontSize:17,fontWeight:800}}>{displayName}</div>
@@ -2253,7 +2314,7 @@ function ParentView({token,profile,userId}){
           setChildren([]);
           return;
         }
-        const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,classes(name)&order=student_no.asc`,{token});
+        const k=await sbFetch(`students?id=in.(${ids.join(",")})&select=id,full_name,student_no,photo_path,classes(name)&order=student_no.asc`,{token});
         setChildren(k||[]);
         if((k||[]).length===0){setErr("พบการผูกแล้ว แต่ยังอ่านข้อมูลนักเรียนไม่ได้ กรุณาตรวจ RLS ของ students/classes");}
         if((k||[]).length===1){setSel(k[0]);setInfo(k[0]);}
@@ -2295,7 +2356,7 @@ function ParentView({token,profile,userId}){
           </div>
         )):children.length===0?<Empty icon="👪" msg="ยังไม่มีข้อมูลบุตรหลาน"/>:children.map(c=>(
           <button key={c.id} onClick={()=>{setSel(c);setInfo(c);}} style={{width:"100%",textAlign:"left",background:C.g50,border:`1.5px solid ${C.g200}`,borderRadius:12,padding:"14px 16px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:46,height:46,borderRadius:99,background:C.goldP,border:`2px solid ${C.gold}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>👧</div>
+            <StudentAvatar path={c.photo_path} token={token} size={46}/>
             <div><div style={{fontWeight:700,fontSize:15,color:C.navy}}>{c.full_name}</div><div style={{fontSize:12,color:C.g400}}>{c.classes?.name||"—"} · เลขที่ {c.student_no||"—"}</div></div>
             <div style={{marginLeft:"auto",color:C.gold,fontSize:20}}>›</div>
           </button>
