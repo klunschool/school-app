@@ -1374,6 +1374,90 @@ function AdminReports({token}){
   );
 }
 
+// ======= HOMEROOM PARENT REPORT =======
+function HomeroomParentReport({token,profile,role}){
+  const [classes,setClasses]=useState([]);
+  const [students,setStudents]=useState([]);
+  const [links,setLinks]=useState([]);
+  const [classId,setClassId]=useState("all");
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      let cls=[];
+      if(role==="admin"){
+        cls=await sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]);
+      }else{
+        const rows=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
+        const ids=(rows||[]).map(x=>x.class_id).filter(Boolean);
+        cls=ids.length?await sbFetch(`classes?id=in.(${ids.join(",")})&select=id,name&order=id.asc`,{token}).catch(()=>[]):[];
+      }
+      cls=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
+      const ids=cls.map(c=>c.id).filter(Boolean);
+      const stu=ids.length?await sbFetch(`students?class_id=in.(${ids.join(",")})&select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc`,{token}).catch(()=>[]):[];
+      const parentLinks=await sbFetch("rpc/teacher_parent_link_report",{method:"POST",token,body:"{}"}).catch(()=>[]);
+      setClasses(cls);
+      setStudents([...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)));
+      setLinks(parentLinks||[]);
+      setLoading(false);
+    };
+    load();
+  },[token,profile.id,role]);
+  if(loading)return <Spin/>;
+  const visible=classId==="all"?students:students.filter(s=>String(s.class_id)===classId);
+  const linkMap={};
+  links.forEach(x=>{if(!linkMap[x.student_id])linkMap[x.student_id]=[];linkMap[x.student_id].push(x);});
+  const linked=visible.filter(s=>linkMap[s.id]?.length).length;
+  const notLinked=visible.length-linked;
+  const classSummary=classes.map(c=>{
+    const list=students.filter(s=>String(s.class_id)===String(c.id));
+    const ok=list.filter(s=>linkMap[s.id]?.length).length;
+    return {id:c.id,name:c.name,total:list.length,linked:ok,missing:list.length-ok};
+  }).filter(c=>c.total>0);
+  const chip=(text,active,onClick)=><button onClick={onClick} style={{border:`1.5px solid ${active?C.navy:C.g200}`,background:active?C.navy:C.g50,color:active?C.white:C.navy,borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>{text}</button>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:17,fontWeight:900,color:C.navy}}>👪 รายงานผู้ปกครองประจำห้อง</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:2}}>ดูว่านักเรียนคนไหนผูกบัญชีผู้ปกครองแล้วหรือยังไม่ผูก</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:12}}>
+          <div style={{background:C.g50,borderRadius:12,padding:10}}><div style={{fontSize:20,fontWeight:900,color:C.navy}}>{visible.length}</div><div style={{fontSize:11,color:C.g600,fontWeight:800}}>นักเรียน</div></div>
+          <div style={{background:C.greenL,borderRadius:12,padding:10}}><div style={{fontSize:20,fontWeight:900,color:C.green}}>{linked}</div><div style={{fontSize:11,color:C.g600,fontWeight:800}}>ผูกแล้ว</div></div>
+          <div style={{background:C.redL,borderRadius:12,padding:10}}><div style={{fontSize:20,fontWeight:900,color:C.red}}>{notLinked}</div><div style={{fontSize:11,color:C.g600,fontWeight:800}}>ยังไม่ผูก</div></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginTop:12}}>
+          {chip("ทุกห้อง",classId==="all",()=>setClassId("all"))}
+          {classes.map(c=><React.Fragment key={c.id}>{chip(c.name,String(classId)===String(c.id),()=>setClassId(String(c.id)))}</React.Fragment>)}
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>สรุปตามห้อง</div>
+        {classSummary.filter(c=>classId==="all"||String(c.id)===classId).map(c=><div key={c.id} style={{display:"grid",gridTemplateColumns:"1.2fr 0.8fr 0.8fr 0.8fr",gap:6,padding:"9px 0",borderBottom:`1px solid ${C.g100}`,alignItems:"center"}}>
+          <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{c.name}</div>
+          <div style={{fontSize:12,color:C.g600}}>นร. {c.total}</div>
+          <div style={{fontSize:12,color:C.green,fontWeight:900}}>ผูก {c.linked}</div>
+          <div style={{fontSize:12,color:C.red,fontWeight:900}}>ยัง {c.missing}</div>
+        </div>)}
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>รายชื่อนักเรียน</div>
+        {visible.length===0?<Empty icon="👪" msg="ไม่พบนักเรียนในห้องที่เลือก"/>:visible.map(s=>{
+          const parents=linkMap[s.id]||[];
+          const ok=parents.length>0;
+          return <div key={s.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.g100}`}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div>
+              <div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div>
+              {ok&&<div style={{fontSize:11,color:C.green,marginTop:3,fontWeight:800}}>ผู้ปกครอง: {parents.map(p=>p.parent_name||"ไม่ระบุชื่อ").join(", ")}</div>}
+            </div>
+            <span style={{alignSelf:"center",background:ok?C.greenL:C.redL,color:ok?C.green:C.red,borderRadius:99,padding:"4px 9px",fontSize:11,fontWeight:900,whiteSpace:"nowrap"}}>{ok?"ผูกแล้ว":"ยังไม่ผูก"}</span>
+          </div>;
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ======= ADMIN STUDENT MANAGEMENT =======
 function AdminStudentManagement({token}){
   const [classes,setClasses]=useState([]);
@@ -2002,6 +2086,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
+  if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
@@ -2427,6 +2512,7 @@ function App(){
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
+      if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
