@@ -219,7 +219,7 @@ function blobToImage(blob){
 function canvasToBlob(canvas,type,quality){
   return new Promise(resolve=>canvas.toBlob(resolve,type,quality));
 }
-async function compressImageFile(file,maxBytes=2*1024*1024){
+async function compressImageFile(file,maxBytes=1024*1024){
   if(!file||!file.type.startsWith("image/"))return file;
   if(file.size<=maxBytes)return file;
   const img=await blobToImage(file);

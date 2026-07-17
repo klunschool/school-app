@@ -9,12 +9,12 @@ values (
   'student-photos',
   'student-photos',
   false,
-  2097152,
+  1048576,
   array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 )
 on conflict (id) do update
 set public = false,
-    file_size_limit = 2097152,
+    file_size_limit = 1048576,
     allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 drop policy if exists student_photos_select_authenticated on storage.objects;
