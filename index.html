@@ -246,7 +246,26 @@ async function compressImageFile(file,maxBytes=1024*1024){
     const blob=await canvasToBlob(smaller,"image/jpeg",0.38);
     if(blob&&blob.size<=maxBytes)return new File([blob],file.name.replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"});
   }
-  throw new Error("บีบอัดรูปให้ต่ำกว่า 2 MB ไม่สำเร็จ กรุณาเลือกรูปอื่น");
+  throw new Error("บีบอัดรูปให้ต่ำกว่า 1 MB ไม่สำเร็จ กรุณาเลือกรูปอื่น");
+}
+async function cropStudentPhotoFile(file,{zoom=1.15,x=0,y=0}={}){
+  const img=await blobToImage(file);
+  const size=512;
+  const canvas=document.createElement("canvas");
+  canvas.width=size;
+  canvas.height=size;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";
+  ctx.fillRect(0,0,size,size);
+  const scale=Math.max(size/img.width,size/img.height)*zoom;
+  const drawW=img.width*scale;
+  const drawH=img.height*scale;
+  const drawX=(size-drawW)/2+(x*size/2);
+  const drawY=(size-drawH)/2+(y*size/2);
+  ctx.drawImage(img,drawX,drawY,drawW,drawH);
+  const blob=await canvasToBlob(canvas,"image/jpeg",0.88);
+  if(!blob)throw new Error("ปรับรูปไม่สำเร็จ");
+  return new File([blob],file.name.replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"});
 }
 async function getStudentPhotoUrl(path,token){
   if(!path)return "";
@@ -1551,6 +1570,7 @@ function AdminStudentManagement({token}){
   const [query,setQuery]=useState("");
   const [manageClass,setManageClass]=useState("");
   const [editing,setEditing]=useState(null);
+  const [photoDraft,setPhotoDraft]=useState(null);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState("");
   const load=useCallback(async()=>{
@@ -1622,14 +1642,25 @@ function AdminStudentManagement({token}){
   async function saveStudentPhoto(s,file){
     if(!file)return;
     if(!file.type.startsWith("image/"))return alert("กรุณาเลือกไฟล์รูปภาพ");
+    if(photoDraft?.url)URL.revokeObjectURL(photoDraft.url);
+    setPhotoDraft({student:s,file,url:URL.createObjectURL(file),zoom:1.15,x:0,y:0});
+  }
+  function closePhotoDraft(){
+    if(photoDraft?.url)URL.revokeObjectURL(photoDraft.url);
+    setPhotoDraft(null);
+  }
+  async function confirmStudentPhoto(){
+    if(!photoDraft)return;
+    const s=photoDraft.student;
     setBusy(`photo-${s.id}`);
     try{
-      const readyFile=await compressImageFile(file);
+      const croppedFile=await cropStudentPhotoFile(photoDraft.file,photoDraft);
+      const readyFile=await compressImageFile(croppedFile);
       const ext=(readyFile.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5)||"jpg";
       const path=`students/${s.id}-${Date.now()}.${ext}`;
       await uploadStudentPhoto(readyFile,path,token);
       await sbFetch("rpc/admin_set_student_photo",{method:"POST",token,body:JSON.stringify({p_student_id:Number(s.id),p_photo_path:path})});
-      await load();alert("อัปโหลดรูปนักเรียนเรียบร้อย");
+      closePhotoDraft();await load();alert("อัปโหลดรูปนักเรียนเรียบร้อย");
     }catch(e){alert(e.message);}
     finally{setBusy("");}
   }
@@ -1640,6 +1671,32 @@ function AdminStudentManagement({token}){
   </div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {photoDraft&&<div style={{position:"fixed",inset:0,zIndex:50,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:C.white,borderRadius:18,padding:16,width:"100%",maxWidth:360,boxShadow:"0 20px 50px rgba(0,0,0,0.25)"}}>
+          <div style={{fontSize:16,fontWeight:900,color:C.navy}}>ปรับรูปนักเรียน</div>
+          <div style={{fontSize:12,color:C.g400,marginTop:2,marginBottom:12}}>เลื่อนและซูมให้ใบหน้าอยู่กึ่งกลางก่อนบันทึก</div>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
+            <div style={{width:220,height:220,borderRadius:999,overflow:"hidden",border:`4px solid ${C.gold}`,background:C.g100,position:"relative"}}>
+              <img src={photoDraft.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",transform:`translate(${photoDraft.x*110}px, ${photoDraft.y*110}px) scale(${photoDraft.zoom})`,transformOrigin:"center",transition:"transform 0.12s ease"}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
+            <button onClick={()=>setPhotoDraft(p=>({...p,y:Math.max(-1,p.y-0.08)}))} style={{gridColumn:"2",border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขึ้น</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,x:Math.max(-1,p.x-0.08)}))} style={{border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ซ้าย</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,x:0,y:0,zoom:1.15}))} style={{border:"none",background:C.goldP,color:C.yellow,borderRadius:10,padding:10,fontWeight:900}}>กลาง</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,x:Math.min(1,p.x+0.08)}))} style={{border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขวา</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,y:Math.min(1,p.y+0.08)}))} style={{gridColumn:"2",border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ลง</button>
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <button onClick={()=>setPhotoDraft(p=>({...p,zoom:Math.max(1,p.zoom-0.08)}))} style={{flex:1,border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ย่อ</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,zoom:Math.min(2.4,p.zoom+0.08)}))} style={{flex:1,border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขยาย</button>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={closePhotoDraft} disabled={busy===`photo-${photoDraft.student.id}`} style={{flex:1,border:"none",background:C.g200,color:C.navy,borderRadius:10,padding:11,fontWeight:900}}>ยกเลิก</button>
+            <button onClick={confirmStudentPhoto} disabled={busy===`photo-${photoDraft.student.id}`} style={{flex:2,border:"none",background:busy===`photo-${photoDraft.student.id}`?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:900}}>{busy===`photo-${photoDraft.student.id}`?"กำลังบันทึก...":"บันทึกรูป"}</button>
+          </div>
+        </div>
+      </div>}
       <div style={box}>
         <div style={{fontSize:17,fontWeight:900,color:C.navy}}>🎓 จัดการนักเรียน</div>
         <div style={{fontSize:12,color:C.g400,marginTop:2}}>สำหรับย้ายชั้นปีการศึกษาใหม่ และจัดการรายชื่อนักเรียนในระบบ</div>
