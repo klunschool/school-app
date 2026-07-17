@@ -2050,6 +2050,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
   const [studentCount,setStudentCount]=useState(0);
   const [talkUnread,setTalkUnread]=useState(0);
+  const [parentRequestCount,setParentRequestCount]=useState(0);
   useEffect(()=>{
     const load=async()=>{
       try{
@@ -2061,8 +2062,11 @@ function TeacherHomeView({token,profile,setPage,role,email}){
         if(role==="admin"){
           const countRows=await sbFetch("students?select=id",{token,headers:{Prefer:"count=exact"},parseCount:true}).catch(()=>({count:(stu||[]).length}));
           setStudentCount(Number(countRows?.count ?? (stu||[]).length));
+          const requests=await sbFetch("rpc/list_parent_link_requests",{method:"POST",token,body:"{}"}).catch(()=>[]);
+          setParentRequestCount((requests||[]).filter(r=>r.status==="pending").length);
         }else{
           setStudentCount((stu||[]).length);
+          setParentRequestCount(0);
         }
         const stuIds=(stu||[]).map(s=>s.id).filter(Boolean);
         if(stuIds.length){
@@ -2089,7 +2093,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
-  if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-requests")});
+  if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
   return(
