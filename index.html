@@ -1549,6 +1549,7 @@ function AdminStudentManagement({token}){
   const [toClass,setToClass]=useState("");
   const [selected,setSelected]=useState([]);
   const [query,setQuery]=useState("");
+  const [manageClass,setManageClass]=useState("");
   const [editing,setEditing]=useState(null);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState("");
@@ -1567,6 +1568,7 @@ function AdminStudentManagement({token}){
   const fromStudents=students.filter(s=>String(s.class_id)===String(fromClass));
   const deleteList=students.filter(s=>{
     const q=query.trim().toLowerCase();
+    if(manageClass&&String(s.class_id)!==String(manageClass))return false;
     if(!q)return true;
     return String(s.full_name||"").toLowerCase().includes(q)||String(s.classes?.name||"").toLowerCase().includes(q)||String(s.student_no||"").includes(q);
   }).slice(0,80);
@@ -1671,6 +1673,10 @@ function AdminStudentManagement({token}){
       <div style={box}>
         <div style={{fontSize:15,fontWeight:900,color:C.red,marginBottom:4}}>ลบนักเรียนออกจากระบบ</div>
         <div style={{fontSize:12,color:C.g400,marginBottom:10}}>ใช้เฉพาะกรณีเพิ่มผิด หรือออกจากโรงเรียนจริงเท่านั้น</div>
+        <select value={manageClass} onChange={e=>setManageClass(e.target.value)} style={{...field,marginBottom:8}}>
+          <option value="">ทุกห้อง</option>
+          {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="ค้นหาชื่อ ห้อง หรือเลขที่" style={{...field,fontWeight:700,color:C.g700}}/>
         {editing&&<div style={{marginTop:10,background:C.g50,border:`1px solid ${C.g200}`,borderRadius:12,padding:12}}>
           <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>แก้ไขข้อมูลนักเรียน</div>
