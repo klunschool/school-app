@@ -248,7 +248,7 @@ async function compressImageFile(file,maxBytes=1024*1024){
   }
   throw new Error("บีบอัดรูปให้ต่ำกว่า 1 MB ไม่สำเร็จ กรุณาเลือกรูปอื่น");
 }
-async function cropStudentPhotoFile(file,{zoom=1.15,x=0,y=0}={}){
+async function cropStudentPhotoFile(file,{zoom=1.45,x=0,y=0}={}){
   const img=await blobToImage(file);
   const size=512;
   const canvas=document.createElement("canvas");
@@ -1643,7 +1643,7 @@ function AdminStudentManagement({token}){
     if(!file)return;
     if(!file.type.startsWith("image/"))return alert("กรุณาเลือกไฟล์รูปภาพ");
     if(photoDraft?.url)URL.revokeObjectURL(photoDraft.url);
-    setPhotoDraft({student:s,file,url:URL.createObjectURL(file),zoom:1.15,x:0,y:0});
+    setPhotoDraft({student:s,file,url:URL.createObjectURL(file),zoom:1.45,x:0,y:0});
   }
   function closePhotoDraft(){
     if(photoDraft?.url)URL.revokeObjectURL(photoDraft.url);
@@ -1683,12 +1683,12 @@ function AdminStudentManagement({token}){
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
             <button onClick={()=>setPhotoDraft(p=>({...p,y:Math.max(-1,p.y-0.08)}))} style={{gridColumn:"2",border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขึ้น</button>
             <button onClick={()=>setPhotoDraft(p=>({...p,x:Math.max(-1,p.x-0.08)}))} style={{border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ซ้าย</button>
-            <button onClick={()=>setPhotoDraft(p=>({...p,x:0,y:0,zoom:1.15}))} style={{border:"none",background:C.goldP,color:C.yellow,borderRadius:10,padding:10,fontWeight:900}}>กลาง</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,x:0,y:0,zoom:1.45}))} style={{border:"none",background:C.goldP,color:C.yellow,borderRadius:10,padding:10,fontWeight:900}}>กลาง</button>
             <button onClick={()=>setPhotoDraft(p=>({...p,x:Math.min(1,p.x+0.08)}))} style={{border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขวา</button>
             <button onClick={()=>setPhotoDraft(p=>({...p,y:Math.min(1,p.y+0.08)}))} style={{gridColumn:"2",border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ลง</button>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button onClick={()=>setPhotoDraft(p=>({...p,zoom:Math.max(1,p.zoom-0.08)}))} style={{flex:1,border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ย่อ</button>
+            <button onClick={()=>setPhotoDraft(p=>({...p,zoom:Math.max(1.05,p.zoom-0.08)}))} style={{flex:1,border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ย่อ</button>
             <button onClick={()=>setPhotoDraft(p=>({...p,zoom:Math.min(2.4,p.zoom+0.08)}))} style={{flex:1,border:"none",background:C.g100,color:C.navy,borderRadius:10,padding:10,fontWeight:900}}>ขยาย</button>
           </div>
           <div style={{display:"flex",gap:8}}>
