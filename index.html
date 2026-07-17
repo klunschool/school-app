@@ -30,7 +30,6 @@
 const {useState,useEffect,useCallback,useRef}=React;
 const SUPABASE_URL="https://jwamejlzhvultfomtarb.supabase.co";
 const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3YW1lamx6aHZ1bHRmb210YXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNDAxOTYsImV4cCI6MjA5NzYxNjE5Nn0.hOUPs1Fyh75V3Xo11KgfsGBEiBSZHtJxdcMdsOnJQQ8";
-const EXAM_URL="https://drive.google.com/";
 const TUITION_URL="https://drive.google.com/";
 function tx(th,en){return localStorage.getItem("school_lang")==="en"?en:th;}
 
@@ -323,6 +322,13 @@ const C={
 
 function Spin(){return <div style={{display:"flex",justifyContent:"center",padding:40}}><div style={{width:36,height:36,border:`3px solid ${C.g200}`,borderTopColor:C.navy,borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/></div>;}
 function Empty({icon,msg}){return <div style={{textAlign:"center",padding:"28px 16px",color:C.g400}}><div style={{fontSize:38}}>{icon}</div><div style={{marginTop:8,fontSize:14}}>{msg}</div></div>;}
+function ComingSoonView({title=tx("ผลสอบ","Exam results"),message=tx("ยังไม่ประกาศ","Not announced yet")}){
+  return <div style={{background:C.white,borderRadius:16,padding:"34px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",textAlign:"center"}}>
+    <div style={{fontSize:42,marginBottom:10}}>📋</div>
+    <div style={{fontSize:18,fontWeight:900,color:C.navy}}>{title}</div>
+    <div style={{fontSize:15,fontWeight:800,color:C.g400,marginTop:10}}>{message}</div>
+  </div>;
+}
 function StudentAvatar({path,token,size=46,fallback="👧"}){
   const [url,setUrl]=useState("");
   useEffect(()=>{
@@ -2170,10 +2176,10 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
     ...(isParent?[{id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>onPageChange("talk")}]:[]),
-    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
+    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>onPageChange("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
-  ].filter(item=>!(isParent&&item.id==="exam"));
+  ];
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {/* Profile banner */}
@@ -2253,7 +2259,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
     {id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>setPage("talk")},
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
-    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>window.open(EXAM_URL,"_blank")},
+    {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>setPage("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
@@ -2493,7 +2499,7 @@ function ParentView({token,profile,userId}){
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name} role="parent"/></div>;
   if(page==="tuition")return <div><Back/><TuitionView token={token} profile={profile} student={sel}/></div>;
-  if(page==="exam"){window.open(EXAM_URL,"_blank");setPage("home");}
+  if(page==="exam")return <div><Back/><ComingSoonView/></div>;
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
@@ -2681,6 +2687,7 @@ function App(){
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
+      if(subPage==="exam")return <div><Back/><ComingSoonView/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
