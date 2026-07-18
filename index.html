@@ -1566,6 +1566,76 @@ function HomeroomParentReport({token,profile,role}){
   );
 }
 
+function ParentUsageReport({token}){
+  const [rows,setRows]=useState([]);
+  const [classId,setClassId]=useState("all");
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      const data=await sbFetch("rpc/teacher_parent_usage_report",{method:"POST",token,body:"{}"}).catch(()=>[]);
+      setRows(data||[]);
+      setLoading(false);
+    };
+    load();
+  },[token]);
+  if(loading)return <Spin/>;
+  const classes=Array.from(new Map(rows.map(r=>[r.class_id,{id:r.class_id,name:r.class_name}]).filter(x=>x[0])).values())
+    .sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
+  const visible=classId==="all"?rows:rows.filter(r=>String(r.class_id)===classId);
+  const studentIds=new Set(visible.map(r=>r.student_id));
+  const linked=visible.filter(r=>r.parent_id).length;
+  const signedIn=visible.filter(r=>r.parent_id&&r.last_sign_in_at).length;
+  const never=visible.filter(r=>r.parent_id&&!r.last_sign_in_at).length;
+  const card=(label,value,color=C.navy)=><div style={{background:C.white,borderRadius:14,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+    <div style={{fontSize:22,fontWeight:900,color}}>{value}</div>
+    <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:2}}>{label}</div>
+  </div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:17,fontWeight:900,color:C.navy}}>📱 รายงานการเข้าใช้งานผู้ปกครอง</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:2}}>ดูว่าผู้ปกครองผูกบัญชีแล้วหรือยัง และเข้าใช้งานล่าสุดเมื่อไหร่</div>
+        <select value={classId} onChange={e=>setClassId(e.target.value)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,fontWeight:800,color:C.navy}}>
+          <option value="all">ทุกห้องเรียน</option>
+          {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+        {card("นักเรียน",studentIds.size,C.navy)}
+        {card("บัญชีผู้ปกครอง",linked,C.green)}
+        {card("เคยเข้าใช้",signedIn,C.gold)}
+        {card("ยังไม่เคยเข้า",never,C.red)}
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontSize:14,fontWeight:900,color:C.navy,marginBottom:8}}>รายชื่อผู้ปกครอง</div>
+        {visible.length===0?<Empty icon="📱" msg="ไม่พบข้อมูลในห้องที่เลือก"/>:visible.map((r,i)=>{
+          const hasParent=!!r.parent_id;
+          const hasLogin=!!r.last_sign_in_at;
+          return <div key={`${r.student_id}-${r.parent_id||"none"}-${i}`} style={{padding:"10px 0",borderBottom:`1px solid ${C.g100}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{r.student_name||"-"}</div>
+                <div style={{fontSize:11,color:C.g400}}>{r.class_name||"-"} · เลขที่ {r.student_no||"-"}</div>
+                <div style={{fontSize:12,color:hasParent?C.g700:C.red,marginTop:5,fontWeight:800}}>
+                  {hasParent?(r.parent_name||r.parent_email||"ไม่ระบุชื่อผู้ปกครอง"):"ยังไม่ผูกผู้ปกครอง"}
+                </div>
+                {hasParent&&<div style={{fontSize:11,color:C.g400,marginTop:2}}>{r.parent_email||"-"}</div>}
+              </div>
+              <span style={{background:!hasParent?C.redL:hasLogin?C.greenL:C.yellowL,color:!hasParent?C.red:hasLogin?C.green:C.yellow,borderRadius:99,padding:"4px 8px",fontSize:11,fontWeight:900,whiteSpace:"nowrap"}}>
+                {!hasParent?"ยังไม่ผูก":hasLogin?"เข้าแล้ว":"ยังไม่เข้า"}
+              </span>
+            </div>
+            {hasParent&&<div style={{fontSize:11,color:C.g600,marginTop:6}}>
+              ยืนยันบัญชี: {r.confirmed_at?formatThaiDateTime(r.confirmed_at):"ยังไม่ยืนยัน"} · เข้าใช้ล่าสุด: {r.last_sign_in_at?formatThaiDateTime(r.last_sign_in_at):"ยังไม่เคยเข้า"}
+            </div>}
+          </div>;
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ======= ADMIN STUDENT MANAGEMENT =======
 function AdminStudentManagement({token}){
   const [classes,setClasses]=useState([]);
@@ -2263,6 +2333,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
+  if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-usage",icon:"📱",label:tx("เข้าใช้งานผู้ปกครอง","Parent usage"),bg:"linear-gradient(135deg,#2563eb,#06b6d4)",action:()=>setPage("parent-usage")});
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
@@ -2690,6 +2761,7 @@ function App(){
       if(subPage==="exam")return <div><Back/><ComingSoonView/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
+      if(subPage==="parent-usage"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><ParentUsageReport token={token}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
