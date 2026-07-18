@@ -1378,6 +1378,7 @@ function ParentTeacherTalk({token,profile,role,student=null}){
 function AdminReports({token}){
   const [data,setData]=useState({classes:[],students:[],parents:[],ann:[],talk:[],leave:[]});
   const [classId,setClassId]=useState("all");
+  const [detail,setDetail]=useState("students");
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     const load=async()=>{
@@ -1408,6 +1409,7 @@ function AdminReports({token}){
   const leave=data.leave.filter(x=>studentIds.has(x.student_id));
   const pendingLeave=leave.filter(x=>x.status==="pending");
   const studentMap=Object.fromEntries(data.students.map(s=>[s.id,s]));
+  const classNameMap=Object.fromEntries(data.classes.map(c=>[c.id,c.name]));
   const classSummary=data.classes.map(c=>{
     const list=data.students.filter(s=>String(s.class_id)===String(c.id));
     const ids=new Set(list.map(s=>s.id));
@@ -1419,11 +1421,22 @@ function AdminReports({token}){
       messages:data.talk.filter(m=>ids.has(m.student_id)).length
     };
   }).sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
-  const card=(label,value,color=C.navy,sub="")=><div style={{flex:1,minWidth:92,background:C.white,borderRadius:14,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+  const card=(key,label,value,color=C.navy,sub="")=><button onClick={()=>setDetail(key)} style={{textAlign:"left",border:detail===key?`2px solid ${C.navy}`:"2px solid transparent",flex:1,minWidth:92,background:C.white,borderRadius:14,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",cursor:"pointer",fontFamily:"inherit"}}>
     <div style={{fontSize:22,fontWeight:900,color}}>{value}</div>
-    <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:2}}>{label}</div>
+    <div style={{fontSize:12,fontWeight:800,color:C.navy,marginTop:2,display:"flex",justifyContent:"space-between",gap:6}}><span>{label}</span><span style={{color:C.g400}}>›</span></div>
     {sub&&<div style={{fontSize:11,color:C.g400,marginTop:2}}>{sub}</div>}
-  </div>;
+  </button>;
+  const detailTitle={students:"รายชื่อนักเรียน",parents:"รายละเอียดผู้ปกครอง",ann:"รายละเอียดประกาศ",talk:"รายละเอียดการพูดคุย",leave:"รายละเอียดใบลา",classes:"รายละเอียดห้องเรียน"}[detail]||"รายละเอียด";
+  const detailEmpty={students:"ไม่พบนักเรียน",parents:"ไม่พบข้อมูลผู้ปกครอง",ann:"ยังไม่มีประกาศ",talk:"ยังไม่มีข้อความ",leave:"ยังไม่มีใบลา",classes:"ไม่พบห้องเรียน"}[detail]||"ไม่พบข้อมูล";
+  const detailRows=()=>{
+    if(detail==="students")return students.map(s=>({id:s.id,title:s.full_name,meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"}`,status:linkedIds.has(s.id)?"มีผู้ปกครอง":"ยังไม่มี",color:linkedIds.has(s.id)?C.green:C.red}));
+    if(detail==="parents")return students.map(s=>({id:s.id,title:s.full_name,meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"}`,status:linkedIds.has(s.id)?"ผูกแล้ว":"ยังไม่ผูก",color:linkedIds.has(s.id)?C.green:C.red}));
+    if(detail==="ann")return ann.map(a=>({id:a.id,title:a.title||"-",meta:`${a.class_id?classNameMap[a.class_id]||"เฉพาะห้อง":"ทั้งโรงเรียน"} · ${formatThaiDate(a.created_at)}`,status:a.pinned?"ปักหมุด":"ประกาศ",color:a.pinned?C.red:C.gold}));
+    if(detail==="talk")return talk.map(m=>{const s=studentMap[m.student_id]||{};return {id:m.id,title:s.full_name||"-",meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"} · ${formatThaiDateTime(m.created_at)}`,body:m.body,status:m.parent_id&&!m.teacher_read_at?"ใหม่":"อ่านแล้ว",color:m.parent_id&&!m.teacher_read_at?C.red:C.green};});
+    if(detail==="leave")return leave.map(l=>{const s=studentMap[l.student_id]||{};return {id:l.id,title:s.full_name||"-",meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"} · วันที่ลา ${l.leave_date||"-"}`,status:l.status==="pending"?"รอตรวจ":l.status||"-",color:l.status==="pending"?C.yellow:C.green};});
+    if(detail==="classes")return classSummary.filter(c=>c.students>0&&(classId==="all"||String(c.id)===classId)).map(c=>({id:c.id,title:c.name,meta:`นักเรียน ${c.students} คน · ผู้ปกครอง ${c.linked} · คุย ${c.messages}`,status:"ดูห้อง",color:C.navy}));
+    return [];
+  };
   const exportCsv=()=>{
     const rows=[["ห้อง","นักเรียน","เลขที่","มีผู้ปกครอง"]];
     students.forEach(s=>rows.push([s.classes?.name||"-",s.full_name||"-",s.student_no||"-",linkedIds.has(s.id)?"มี":"ยังไม่มี"]));
@@ -1447,12 +1460,29 @@ function AdminReports({token}){
         </select>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-        {card("นักเรียน",students.length,C.navy)}
-        {card("ผูกผู้ปกครอง",linkedIds.size,C.green,`ยังไม่มี ${noParent.length} คน`)}
-        {card("ประกาศ",ann.length,C.gold)}
-        {card("การพูดคุย",talk.length,C.red,`นักเรียน ${talkStudentCount} คน · ใหม่ ${unreadTalk.length}`)}
-        {card("ใบลา",leave.length,C.yellow,`รอตรวจ ${pendingLeave.length}`)}
-        {card("ห้องเรียน",classId==="all"?data.classes.length:1,C.green)}
+        {card("students","นักเรียน",students.length,C.navy)}
+        {card("parents","ผูกผู้ปกครอง",linkedIds.size,C.green,`ยังไม่มี ${noParent.length} คน`)}
+        {card("ann","ประกาศ",ann.length,C.gold)}
+        {card("talk","การพูดคุย",talk.length,C.red,`นักเรียน ${talkStudentCount} คน · ใหม่ ${unreadTalk.length}`)}
+        {card("leave","ใบลา",leave.length,C.yellow,`รอตรวจ ${pendingLeave.length}`)}
+        {card("classes","ห้องเรียน",classId==="all"?data.classes.length:1,C.green)}
+      </div>
+      <div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:14,fontWeight:900,color:C.navy}}>{detailTitle}</div>
+          <div style={{fontSize:11,color:C.g400,fontWeight:800}}>{detailRows().length} รายการ</div>
+        </div>
+        {detailRows().length===0?<Empty icon="🔎" msg={detailEmpty}/>:detailRows().slice(0,60).map((x,i)=><div key={`${detail}-${x.id}-${i}`} style={{padding:"9px 0",borderBottom:i<Math.min(detailRows().length,60)-1?`1px solid ${C.g100}`:"none"}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:900,color:C.navy,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{x.title}</div>
+              <div style={{fontSize:11,color:C.g400,marginTop:1}}>{x.meta}</div>
+              {x.body&&<div style={{fontSize:12,color:C.g700,marginTop:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{x.body}</div>}
+            </div>
+            <span style={{fontSize:11,fontWeight:900,color:x.color,background:x.color===C.red?C.redL:x.color===C.green?C.greenL:x.color===C.yellow?C.yellowL:C.g100,borderRadius:99,padding:"4px 8px",whiteSpace:"nowrap"}}>{x.status}</span>
+          </div>
+        </div>)}
+        {detailRows().length>60&&<div style={{fontSize:11,color:C.g400,textAlign:"center",marginTop:8}}>แสดง 60 รายการแรก เลือกห้องเพื่อดูให้แคบลง</div>}
       </div>
       {noParent.length>0&&<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:14,fontWeight:900,color:C.red,marginBottom:8}}>นักเรียนที่ยังไม่ผูกผู้ปกครอง ({noParent.length})</div>
