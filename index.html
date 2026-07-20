@@ -1285,7 +1285,8 @@ function ParentTeacherTalk({token,profile,role,student=null}){
         if(stu.length){
           const ids=stu.map(s=>s.id).filter(Boolean);
           const readCol=isStaff?"teacher_read_at":"parent_read_at";
-          const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${ids.join(",")})&sender_id=neq.${profile.id}&${readCol}=is.null&select=id,student_id,body,created_at&order=created_at.desc`,{token}).catch(()=>[]);
+          const unreadFrom=isStaff?"parent_id=not.is.null":"teacher_id=not.is.null";
+          const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${ids.join(",")})&${unreadFrom}&${readCol}=is.null&select=id,student_id,body,created_at&order=created_at.desc`,{token}).catch(()=>[]);
           (unread||[]).forEach(m=>{
             if(!unreadMap[m.student_id])unreadMap[m.student_id]={count:0,lastBody:m.body,lastAt:m.created_at};
             unreadMap[m.student_id].count+=1;
@@ -1314,8 +1315,10 @@ function ParentTeacherTalk({token,profile,role,student=null}){
           const list=rows||[];
           setMessages(list);
           const readCol=isStaff?"teacher_read_at":"parent_read_at";
-          if(list.some(m=>m.sender_id!==profile.id&&!m[readCol])){
-            sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&sender_id=neq.${profile.id}&${readCol}=is.null`,{method:"PATCH",token,body:JSON.stringify({[readCol]:new Date().toISOString()})}).catch(()=>{});
+          const incoming=m=>isStaff?!!m.parent_id:!!m.teacher_id;
+          const readFilter=isStaff?"parent_id=not.is.null":"teacher_id=not.is.null";
+          if(list.some(m=>incoming(m)&&!m[readCol])){
+            sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&${readFilter}&${readCol}=is.null`,{method:"PATCH",token,body:JSON.stringify({[readCol]:new Date().toISOString()})}).catch(()=>{});
             setUnreadByStudent(p=>{const next={...p};delete next[selected.id];return next;});
           }
         })
@@ -2334,6 +2337,14 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   const [talkUnread,setTalkUnread]=useState(0);
   const [parentRequestCount,setParentRequestCount]=useState(0);
   useEffect(()=>{
+    let timer=null;
+    let lastStudentIds=[];
+    const refreshTalkUnread=async(stuIds=lastStudentIds)=>{
+      lastStudentIds=stuIds||[];
+      if(!lastStudentIds.length){setTalkUnread(0);return;}
+      const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${lastStudentIds.join(",")})&parent_id=not.is.null&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
+      setTalkUnread((unread||[]).length);
+    };
     const load=async()=>{
       try{
         const a=await sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]);setAnn(a||[]);
@@ -2351,12 +2362,11 @@ function TeacherHomeView({token,profile,setPage,role,email}){
           setParentRequestCount(0);
         }
         const stuIds=(stu||[]).map(s=>s.id).filter(Boolean);
-        if(stuIds.length){
-          const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${stuIds.join(",")})&sender_id=neq.${profile.id}&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
-          setTalkUnread((unread||[]).length);
-        }else setTalkUnread(0);
+        await refreshTalkUnread(stuIds);
+        timer=setInterval(()=>refreshTalkUnread(),10000);
       }catch(e){}finally{setLoading(false);}
     };load();
+    return()=>{if(timer)clearInterval(timer);};
   },[token,profile.id]);
   const isDirector=String(email||"").toLowerCase()==="director@klunschool.com";
   let menus=[
