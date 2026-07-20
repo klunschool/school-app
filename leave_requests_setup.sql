@@ -96,7 +96,27 @@ with check (
   )
 );
 
-grant select, insert, update on public.leave_requests to authenticated;
+drop policy if exists leave_requests_delete on public.leave_requests;
+create policy leave_requests_delete
+on public.leave_requests
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  )
+  or exists (
+    select 1
+    from public.students s
+    join public.teacher_class tc on tc.class_id = s.class_id
+    where s.id = leave_requests.student_id
+      and tc.teacher_id = auth.uid()
+  )
+);
+
+grant select, insert, update, delete on public.leave_requests to authenticated;
 
 create or replace function public.sync_approved_leave_to_attendance()
 returns trigger
@@ -131,3 +151,29 @@ create trigger sync_approved_leave
 after update of status on public.leave_requests
 for each row
 execute function public.sync_approved_leave_to_attendance();
+
+create or replace function public.cleanup_deleted_leave_attendance()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.status = 'approved' then
+    delete from public.attendance
+    where student_id = old.student_id
+      and date = old.leave_date
+      and status = 'leave';
+  end if;
+
+  return old;
+end;
+$$;
+
+drop trigger if exists cleanup_deleted_leave_attendance_trigger on public.leave_requests;
+create trigger cleanup_deleted_leave_attendance_trigger
+before delete on public.leave_requests
+for each row
+execute function public.cleanup_deleted_leave_attendance();
+
+notify pgrst, 'reload schema';

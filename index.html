@@ -814,6 +814,14 @@ function LeaveRequestsView({token,profile,readOnly=false}){
       load();
     }catch(e){alert(e.message);}finally{setBusy("");}
   }
+  async function deleteLeave(item){
+    if(!confirm("ลบใบลานี้ออกจากประวัติใช่ไหม?"))return;
+    setBusy(item.id);
+    try{
+      await sbFetch(`leave_requests?id=eq.${item.id}`,{method:"DELETE",token});
+      load();
+    }catch(e){alert(e.message||"ลบใบลาไม่สำเร็จ");}finally{setBusy("");}
+  }
   const shown=filter==="all"?list:list.filter(x=>x.status===filter);
   const typeLabel={sick:tx("ลาป่วย","Sick leave"),personal:tx("ลากิจ","Personal leave"),other:tx("อื่นๆ","Other")};
   const statusInfo={pending:{label:tx("รอตรวจสอบ","Pending"),color:C.yellow,bg:C.yellowL},approved:{label:tx("อนุมัติแล้ว","Approved"),color:C.green,bg:C.greenL},rejected:{label:tx("ไม่อนุมัติ","Rejected"),color:C.red,bg:C.redL}};
@@ -838,6 +846,7 @@ function LeaveRequestsView({token,profile,readOnly=false}){
               <button disabled={busy===r.id} onClick={()=>review(r,"rejected")} style={{border:`1.5px solid ${C.red}`,borderRadius:9,padding:9,background:C.redL,color:C.red,fontWeight:800,cursor:"pointer"}}>{tx("ไม่อนุมัติ","Reject")}</button>
               <button disabled={busy===r.id} onClick={()=>review(r,"approved")} style={{border:`1.5px solid ${C.green}`,borderRadius:9,padding:9,background:C.greenL,color:C.green,fontWeight:800,cursor:"pointer"}}>{tx("อนุมัติ","Approve")}</button>
             </div>}
+            {canReview&&<button disabled={busy===r.id} onClick={()=>deleteLeave(r)} style={{width:"100%",marginTop:9,border:`1.5px solid ${C.red}`,borderRadius:9,padding:9,background:C.white,color:C.red,fontWeight:800,cursor:"pointer"}}>{busy===r.id?tx("กำลังลบ...","Deleting..."):tx("ลบใบลา","Delete leave")}</button>}
           </div>;
         })}
       </div>
