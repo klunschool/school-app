@@ -872,6 +872,14 @@ function AttendCheck({token,profile}){
     }catch(e){alert(e.message||tx("บันทึกไม่สำเร็จ","Could not save attendance"));}
     finally{setBusy("");}
   }
+  async function markLeave(student,leaveType){
+    const key=`${student.student_id}-leave-${leaveType}`;setBusy(key);
+    try{
+      await sbFetch("rpc/record_teacher_leave_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:student.student_id,p_date:date,p_leave_type:leaveType})});
+      await load(true);
+    }catch(e){alert(e.message||tx("บันทึกการลาไม่สำเร็จ","Could not save leave"));}
+    finally{setBusy("");}
+  }
   const opts=[{v:"present",l:"มา",c:C.green,bg:C.greenL},{v:"late",l:"สาย",c:C.yellow,bg:C.yellowL},{v:"absent",l:"ขาด",c:C.red,bg:C.redL},{v:"leave",l:"ลา",c:C.g600,bg:C.g100}];
   const shownRows=className==="all"?rows:rows.filter(r=>r.class_name===className);
   const sum={present:0,late:0,absent:0,leave:0};shownRows.forEach(r=>{if(sum[r.status]!==undefined)sum[r.status]++;});
@@ -899,6 +907,8 @@ function AttendCheck({token,profile}){
             {s.status==="absent"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginLeft:40}}>
               <button disabled={!!busy} onClick={()=>markPresent(s,"forgot_card")} style={{border:`1px solid ${C.navy}`,borderRadius:8,padding:"7px 4px",background:C.white,color:C.navy,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-forgot_card`?tx("กำลังบันทึก...","Saving..."):tx("ลืมบัตร","Forgot card")}</button>
               <button disabled={!!busy} onClick={()=>markPresent(s,"damaged_card")} style={{border:`1px solid ${C.yellow}`,borderRadius:8,padding:"7px 4px",background:C.yellowL,color:C.yellow,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-damaged_card`?tx("กำลังบันทึก...","Saving..."):tx("บัตรชำรุด","Damaged card")}</button>
+              <button disabled={!!busy} onClick={()=>markLeave(s,"sick")} style={{border:`1px solid ${C.green}`,borderRadius:8,padding:"7px 4px",background:C.greenL,color:C.green,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-leave-sick`?tx("กำลังบันทึก...","Saving..."):tx("ลาป่วย","Sick leave")}</button>
+              <button disabled={!!busy} onClick={()=>markLeave(s,"personal")} style={{border:`1px solid ${C.navy}`,borderRadius:8,padding:"7px 4px",background:C.g50,color:C.navy,fontSize:11,fontWeight:800,cursor:"pointer"}}>{busy===`${s.student_id}-leave-personal`?tx("กำลังบันทึก...","Saving..."):tx("ลากิจ","Personal leave")}</button>
             </div>}
           </div>
         })}
