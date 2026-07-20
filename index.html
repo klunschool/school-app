@@ -785,7 +785,7 @@ function LeaveForm({token,profile,initStudents=[]}){
           const st=statusInfo[r.status]||statusInfo.pending;
           return <div key={r.id} style={{padding:"11px 0",borderBottom:i<requests.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-              <div><div style={{fontWeight:700,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>{r.students?.classes?.name||"-"} · {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div></div>
+              <div><div style={{fontWeight:700,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>วันที่ลา {r.students?.classes?.name||"-"} · {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div><div style={{fontSize:11,color:C.g400,marginTop:2}}>ส่งใบลาเมื่อ {formatThaiDateTime(r.created_at)}</div></div>
               <span style={{alignSelf:"flex-start",background:st.bg,color:st.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>{st.label}</span>
             </div>
             <div style={{fontSize:13,color:C.g600,marginTop:5}}>{typeLabel[r.leave_type]} · {r.reason}</div>
@@ -838,7 +838,7 @@ function LeaveRequestsView({token,profile,readOnly=false}){
           const st=statusInfo[r.status]||statusInfo.pending;
           return <div key={r.id} style={{padding:"13px 0",borderBottom:i<shown.length-1?`1px solid ${C.g100}`:"none"}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-              <div><div style={{fontWeight:800,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>{r.students?.classes?.name||"-"} · {tx("เลขที่","No.")} {r.students?.student_no||"-"} · {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div></div>
+              <div><div style={{fontWeight:800,fontSize:14,color:C.navy}}>{r.students?.full_name}</div><div style={{fontSize:12,color:C.g400}}>{r.students?.classes?.name||"-"} · {tx("เลขที่","No.")} {r.students?.student_no||"-"} · วันที่ลา {new Date(r.leave_date+"T00:00:00").toLocaleDateString("th-TH",{dateStyle:"medium"})}</div><div style={{fontSize:11,color:C.g400,marginTop:2}}>ส่งใบลาเมื่อ {formatThaiDateTime(r.created_at)}</div></div>
               <span style={{alignSelf:"flex-start",background:st.bg,color:st.color,borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800,whiteSpace:"nowrap"}}>{st.label}</span>
             </div>
             <div style={{background:C.g50,borderRadius:9,padding:"9px 10px",fontSize:13,color:C.g700,marginTop:8}}><b>{typeLabel[r.leave_type]}</b><br/>{r.reason}</div>
