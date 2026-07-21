@@ -388,7 +388,7 @@ function attendanceRange(){
 }
 const ATTENDANCE_RESET_START="2026-07-20";
 function usesAttendanceReset(className){
-  return className&&className!=="ป.6/1";
+  return !!className;
 }
 function clampAttendanceFrom(from,className){
   return usesAttendanceReset(className)&&from<ATTENDANCE_RESET_START?ATTENDANCE_RESET_START:from;
