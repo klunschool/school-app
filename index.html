@@ -397,6 +397,9 @@ function attendanceRangeForClass(className){
   const range=attendanceRange();
   return {...range,from:clampAttendanceFrom(range.from,className)};
 }
+function filterAttendanceByRange(rows,range){
+  return (rows||[]).filter(r=>!r.date||(r.date>=range.from&&r.date<=range.to));
+}
 
 function ParentRegister({onBack}){
   const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
@@ -2290,7 +2293,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
         sbFetch(`grades?student_id=eq.${sid}&select=*&order=created_at.desc`,{token}).catch(()=>[]),
         sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]),
       ]);
-      setData({att:a||[],grades:g||[],ann:n||[]});setLoading(false);
+      setData({att:filterAttendanceByRange(a,range),grades:g||[],ann:n||[]});setLoading(false);
       if(["parent","teacher_parent"].includes(profile?.role)){
         const unread=await sbFetch(`parent_teacher_messages?student_id=eq.${sid}&sender_id=neq.${profile.id}&parent_read_at=is.null&select=id`,{token}).catch(()=>[]);
         setTalkUnread((unread||[]).length);
@@ -2670,7 +2673,7 @@ function AttendContent({token,student}) {
         :{from:clampAttendanceFrom(localDateISO(monthStart),className),to:localDateISO(monthEnd>today?today:monthEnd)};
       if(range.from>range.to){setAtt([]);setLoading(false);return;}
       setLoading(true);
-      return sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:studentId,p_date_from:range.from,p_date_to:range.to})}).then(a=>setAtt(a||[])).finally(()=>setLoading(false));
+      return sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:studentId,p_date_from:range.from,p_date_to:range.to})}).then(a=>setAtt(filterAttendanceByRange(a,range))).finally(()=>setLoading(false));
     };
     load();const timer=setInterval(load,10000);return()=>clearInterval(timer);
   },[token,studentId,className,date,mode]);
