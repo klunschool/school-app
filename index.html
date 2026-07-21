@@ -386,6 +386,17 @@ function attendanceRange(){
   start.setDate(start.getDate()-41);
   return {from:localDateISO(start),to:localDateISO(end)};
 }
+const ATTENDANCE_RESET_START="2026-07-20";
+function usesAttendanceReset(className){
+  return className&&className!=="ป.6/1";
+}
+function clampAttendanceFrom(from,className){
+  return usesAttendanceReset(className)&&from<ATTENDANCE_RESET_START?ATTENDANCE_RESET_START:from;
+}
+function attendanceRangeForClass(className){
+  const range=attendanceRange();
+  return {...range,from:clampAttendanceFrom(range.from,className)};
+}
 
 function ParentRegister({onBack}){
   const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
@@ -2273,7 +2284,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       let sid=studentId;
       if(!sid){const s=await sbFetch(`students?profile_id=eq.${profile.id}&select=*`,{token}).catch(()=>[]);sid=s?.[0]?.id;}
       if(!sid){setLoading(false);return;}
-      const range=attendanceRange();
+      const range=attendanceRangeForClass(studentInfo?.classes?.name);
       const [a,g,n]=await Promise.all([
         sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:sid,p_date_from:range.from,p_date_to:range.to})}).catch(()=>[]),
         sbFetch(`grades?student_id=eq.${sid}&select=*&order=created_at.desc`,{token}).catch(()=>[]),
@@ -2621,7 +2632,7 @@ function ParentView({token,profile,userId}){
   );
   // หน้าย่อยสำหรับผู้ปกครอง
   const Back=()=><button onClick={()=>setPage("home")} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← กลับ</button>;
-  if(page==="attend")return <div><Back/><AttendContent token={token} studentId={sel.id}/></div>;
+  if(page==="attend")return <div><Back/><AttendContent token={token} student={sel}/></div>;
   if(page==="schedule")return <div><Back/><StudentSchedule token={token} studentId={sel.id}/></div>;
   if(page==="grades")return <div><Back/><Grades token={token} isTeacher={false}/></div>;
   if(page==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
@@ -2641,7 +2652,9 @@ function ParentView({token,profile,userId}){
   );
 }
 
-function AttendContent({token,studentId}){
+function AttendContent({token,student}) {
+  const studentId=student?.id;
+  const className=student?.classes?.name;
   const [att,setAtt]=useState([]);const [loading,setLoading]=useState(true);
   const [date,setDate]=useState(localDateISO());
   const [mode,setMode]=useState("month");
@@ -2654,12 +2667,13 @@ function AttendContent({token,studentId}){
       const today=new Date(localDateISO()+"T12:00:00");
       const range=mode==="day"
         ?{from:date,to:date}
-        :{from:localDateISO(monthStart),to:localDateISO(monthEnd>today?today:monthEnd)};
+        :{from:clampAttendanceFrom(localDateISO(monthStart),className),to:localDateISO(monthEnd>today?today:monthEnd)};
+      if(range.from>range.to){setAtt([]);setLoading(false);return;}
       setLoading(true);
       return sbFetch("rpc/get_derived_attendance",{method:"POST",token,body:JSON.stringify({p_student_id:studentId,p_date_from:range.from,p_date_to:range.to})}).then(a=>setAtt(a||[])).finally(()=>setLoading(false));
     };
     load();const timer=setInterval(load,10000);return()=>clearInterval(timer);
-  },[token,studentId,date,mode]);
+  },[token,studentId,className,date,mode]);
   if(loading)return <Spin/>;
   const sum={present:0,late:0,absent:0,leave:0};att.forEach(a=>{if(sum[a.status]!==undefined)sum[a.status]++;});
   const pct=att.length>0?Math.round(((sum.present+sum.late)/att.length)*100):0;
