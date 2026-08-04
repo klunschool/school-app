@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8"/>
@@ -2324,6 +2324,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
     {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
     ...(isParent?[{id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>onPageChange("talk")}]:[]),
+    ...(isParent?[{id:"assessment",icon:"🏆",label:tx("แบบสอบถาม","Questionnaires"),bg:"linear-gradient(135deg,#db2777,#f59e0b)",action:()=>onPageChange("assessment")}]:[]),
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>onPageChange("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>onPageChange("tuition")},
     {id:"leave",icon:"📝",label:tx("แจ้งลาเรียน","Leave request"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>onPageChange("leave")},
@@ -2363,6 +2364,188 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
       </div>}
     </div>
   );
+}
+
+const ASSESSMENT_TYPES={
+  project:{label:"สรุปโครงการ",icon:"📌",color:"#2563eb"},
+  observation:{label:"แบบสังเกต",icon:"✅",color:"#16a34a"},
+  test:{label:"แบบทดสอบ",icon:"🧪",color:"#7c3aed"}
+};
+function parseLines(text){
+  return String(text||"").split("\n").map(x=>x.trim()).filter(Boolean);
+}
+function AssessmentCenter({token,profile,role}){
+  const [tab,setTab]=useState("build");
+  const [classes,setClasses]=useState([]);const [students,setStudents]=useState([]);const [forms,setForms]=useState([]);const [results,setResults]=useState([]);
+  const [entryStudents,setEntryStudents]=useState([]);
+  const [loading,setLoading]=useState(true);const [saving,setSaving]=useState(false);const [msg,setMsg]=useState("");
+  const [form,setForm]=useState({
+    type:"project",title:"โครงการบ้านนักวิทยาศาสตร์น้อย",level:"อนุบาล/ประถม",activity_date:localDateISO(),
+    audience:"parents",class_id:"",goal:"ประเมินความพึงพอใจ ผลลัพธ์การเรียนรู้ และพฤติกรรมที่เกิดขึ้นหลังเข้าร่วมกิจกรรม",
+    questions:"เด็กเล่าหรือสะท้อนสิ่งที่ได้เรียนรู้จากกิจกรรม\nเด็กมีความสุขและอยากเข้าร่วมกิจกรรมลักษณะนี้อีก\nกิจกรรมช่วยส่งเสริมทักษะการคิด การสื่อสาร และการทำงานร่วมกัน\nผู้ปกครองเห็นพัฒนาการหรือความสนใจใหม่ของเด็ก",
+    rubric:"กล้าแสดงออก\nทำงานร่วมกับเพื่อน\nสื่อสารความคิดได้\nรับผิดชอบงานที่ได้รับ\nแก้ปัญหาอย่างเหมาะสม",
+    max_score:20
+  });
+  const [selected,setSelected]=useState({});
+  const [entry,setEntry]=useState({form_id:"",student_id:"",score:"",note:"",checks:{}});
+  const selectedIds=Object.keys(selected).filter(id=>selected[id]);
+  const staff=["teacher","teacher_parent","admin"].includes(role);
+  const field={width:"100%",padding:"10px 11px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,color:C.g900,fontSize:13,outline:"none"};
+  const smallBtn={border:"none",borderRadius:9,padding:"9px 11px",fontWeight:800,cursor:"pointer"};
+  const card={background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
+  const load=useCallback(async()=>{
+    setLoading(true);
+    try{
+      const [cls,fs,rs]=await Promise.all([
+        sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
+        sbFetch("assessment_forms?select=*&order=created_at.desc",{token}).catch(()=>[]),
+        sbFetch("assessment_results?select=*&order=created_at.desc&limit=500",{token}).catch(()=>[])
+      ]);
+      setClasses(cls||[]);setForms(fs||[]);setResults(rs||[]);
+    }finally{setLoading(false);}
+  },[token]);
+  useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    if(!form.class_id){setStudents([]);setSelected({});return;}
+    sbFetch(`students?class_id=eq.${form.class_id}&select=id,full_name,student_no,classes(name)&order=student_no.asc,full_name.asc`,{token})
+      .then(rows=>{setStudents(rows||[]);setSelected(Object.fromEntries((rows||[]).map(s=>[s.id,true])));})
+      .catch(()=>setStudents([]));
+  },[token,form.class_id]);
+  useEffect(()=>{
+    if(!entry.form_id){setEntryStudents([]);return;}
+    sbFetch(`assessment_participants?form_id=eq.${entry.form_id}&select=students(id,full_name,student_no,classes(name))`,{token})
+      .then(rows=>setEntryStudents((rows||[]).map(x=>x.students).filter(Boolean)))
+      .catch(()=>setEntryStudents([]));
+  },[token,entry.form_id]);
+  const update=(k,v)=>setForm(p=>({...p,[k]:v}));
+  async function saveForm(){
+    if(!staff)return;
+    setMsg("");
+    if(!form.title.trim()||!form.class_id)return setMsg("กรุณากรอกชื่อแบบประเมินและเลือกห้องเรียน");
+    if(selectedIds.length===0)return setMsg("กรุณาเลือกนักเรียนที่เข้าร่วมกิจกรรมอย่างน้อย 1 คน");
+    setSaving(true);
+    try{
+      const questions=parseLines(form.type==="observation"?form.rubric:form.questions);
+      const created=await sbFetch("assessment_forms",{method:"POST",token,body:JSON.stringify({
+        type:form.type,title:form.title.trim(),level:form.level.trim(),activity_date:form.activity_date,
+        audience:form.type==="project"?form.audience:"teacher",status:"active",created_by:profile.id,
+        config:{goal:form.goal,questions,rubric:parseLines(form.rubric),scale:["มากที่สุด","มาก","ปานกลาง","น้อย","ควรส่งเสริม"],max_score:Number(form.max_score)||100}
+      })});
+      const newId=created?.[0]?.id;
+      if(newId){
+        await sbFetch("assessment_participants",{method:"POST",token,body:JSON.stringify(selectedIds.map(id=>({form_id:newId,student_id:Number(id),class_id:Number(form.class_id)})))});
+      }
+      setMsg("บันทึกแบบประเมินและรายชื่อนักเรียนเรียบร้อย");
+      await load();
+    }catch(e){setMsg(e.message||"บันทึกไม่สำเร็จ");}
+    finally{setSaving(false);}
+  }
+  async function saveResult(){
+    setMsg("");
+    if(!entry.form_id||!entry.student_id)return setMsg("เลือกแบบประเมินและนักเรียนก่อน");
+    const f=forms.find(x=>String(x.id)===String(entry.form_id));
+    const payload=f?.type==="observation"?{checks:entry.checks,note:entry.note}:{score:Number(entry.score)||0,max_score:f?.config?.max_score||Number(form.max_score)||100,note:entry.note};
+    setSaving(true);
+    try{
+      await sbFetch("assessment_results",{method:"POST",token,body:JSON.stringify({form_id:Number(entry.form_id),student_id:Number(entry.student_id),submitted_by:profile.id,answers:payload,score:payload.score??null,note:entry.note})});
+      setEntry({form_id:entry.form_id,student_id:"",score:"",note:"",checks:{}});
+      setMsg("บันทึกผลเรียบร้อย");
+      await load();
+    }catch(e){setMsg(e.message||"บันทึกผลไม่สำเร็จ");}
+    finally{setSaving(false);}
+  }
+  const activeForms=forms.filter(f=>f.status!=="archived");
+  const entryForm=forms.find(f=>String(f.id)===String(entry.form_id));
+  const reportRows=forms.map(f=>{
+    const r=results.filter(x=>x.form_id===f.id);
+    const scored=r.filter(x=>x.score!==null&&x.score!==undefined);
+    const avg=scored.length?Math.round(scored.reduce((a,b)=>a+Number(b.score||0),0)/scored.length*10)/10:null;
+    return {...f,result_count:r.length,avg};
+  });
+  if(loading)return <Spin/>;
+  return <div style={{display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,borderRadius:18,padding:18,color:C.white}}>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",fontWeight:800}}>ระบบประเมินครบวงจร</div>
+      <div style={{fontSize:21,fontWeight:900,color:C.gold,marginTop:3}}>ศูนย์ประเมินอนุบาลและประถม</div>
+      <div style={{fontSize:12,lineHeight:1.6,color:"rgba(255,255,255,0.72)",marginTop:7}}>สร้างแบบสอบถามผู้ปกครอง/นักเรียน บันทึกแบบสังเกตครู ใส่คะแนนแบบทดสอบ และสรุปรายงานรายโครงการในที่เดียว</div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>
+      {[["build","ออกแบบ"],["forms","คลังแบบ"],["record","บันทึกผล"],["report","รายงาน"]].map(x=><button key={x[0]} onClick={()=>setTab(x[0])} style={{...smallBtn,background:tab===x[0]?C.navy:C.white,color:tab===x[0]?C.white:C.navy,border:`1px solid ${tab===x[0]?C.navy:C.g200}`}}>{x[1]}</button>)}
+    </div>
+    {msg&&<div style={{padding:"10px 12px",borderRadius:10,background:msg.includes("เรียบร้อย")?C.greenL:C.yellowL,color:msg.includes("เรียบร้อย")?C.green:C.yellow,fontSize:13,fontWeight:800}}>{msg}</div>}
+    {tab==="build"&&<div style={card}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+        {Object.entries(ASSESSMENT_TYPES).map(([k,v])=><button key={k} onClick={()=>update("type",k)} style={{...smallBtn,background:form.type===k?v.color:C.g100,color:form.type===k?C.white:C.g700}}>{v.icon}<br/><span style={{fontSize:11}}>{v.label}</span></button>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <input style={field} value={form.title} onChange={e=>update("title",e.target.value)} placeholder="ชื่อโครงการ/กิจกรรม/แบบทดสอบ"/>
+        <input style={field} value={form.level} onChange={e=>update("level",e.target.value)} placeholder="ระดับชั้น เช่น อ.1-ป.6"/>
+        <input style={field} type="date" value={form.activity_date} onChange={e=>update("activity_date",e.target.value)}/>
+        <select style={field} value={form.class_id} onChange={e=>update("class_id",e.target.value)}><option value="">เลือกห้องเรียน</option>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+      </div>
+      {form.type==="project"&&<select style={{...field,marginTop:8}} value={form.audience} onChange={e=>update("audience",e.target.value)}><option value="parents">ผู้ปกครองตอบเท่านั้น</option><option value="students">นักเรียนตอบ</option><option value="both">ผู้ปกครองและนักเรียน</option></select>}
+      <textarea style={{...field,marginTop:8,minHeight:72}} value={form.goal} onChange={e=>update("goal",e.target.value)} placeholder="เป้าหมาย/ตัวชี้วัด/สิ่งที่ต้องการสรุป"/>
+      <textarea style={{...field,marginTop:8,minHeight:116}} value={form.type==="observation"?form.rubric:form.questions} onChange={e=>update(form.type==="observation"?"rubric":"questions",e.target.value)} placeholder="ใส่รายการประเมิน บรรทัดละ 1 ข้อ"/>
+      {form.type==="test"&&<input style={{...field,marginTop:8}} type="number" value={form.max_score} onChange={e=>update("max_score",e.target.value)} placeholder="คะแนนเต็ม"/>}
+      {students.length>0&&<div style={{marginTop:10,border:`1px solid ${C.g200}`,borderRadius:12,overflow:"hidden"}}>
+        <button onClick={()=>setSelected(Object.fromEntries(students.map(s=>[s.id,selectedIds.length!==students.length])))} style={{width:"100%",border:"none",background:C.g100,padding:10,textAlign:"left",fontWeight:900,color:C.navy}}>นักเรียนเข้าร่วม {selectedIds.length}/{students.length} คน</button>
+        <div style={{maxHeight:220,overflow:"auto",padding:8,display:"grid",gap:6}}>
+          {students.map(s=><label key={s.id} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 9px",background:C.g50,borderRadius:9,fontSize:13,color:C.g700}}><input type="checkbox" checked={!!selected[s.id]} onChange={e=>setSelected(p=>({...p,[s.id]:e.target.checked}))}/><b style={{color:C.navy,width:32}}>#{s.student_no||"-"}</b>{s.full_name}</label>)}
+        </div>
+      </div>}
+      <button onClick={saveForm} disabled={saving} style={{...smallBtn,width:"100%",marginTop:10,background:saving?C.g400:C.navy,color:C.white,fontSize:15}}>{saving?"กำลังบันทึก...":"สร้างแบบประเมินพร้อมรายชื่อนักเรียน"}</button>
+    </div>}
+    {tab==="forms"&&<div style={{display:"grid",gap:9}}>{activeForms.length===0?<Empty icon="📋" msg="ยังไม่มีแบบประเมิน"/>:activeForms.map(f=><div key={f.id} style={card}>
+      <div style={{display:"flex",gap:10,alignItems:"flex-start"}}><div style={{fontSize:26}}>{ASSESSMENT_TYPES[f.type]?.icon||"📋"}</div><div style={{flex:1}}><div style={{fontWeight:900,color:C.navy,fontSize:15}}>{f.title}</div><div style={{fontSize:12,color:C.g400,marginTop:2}}>{ASSESSMENT_TYPES[f.type]?.label} · {f.level||"-"} · {formatThaiDate(f.activity_date||f.created_at)}</div><div style={{fontSize:12,color:C.g700,marginTop:7,lineHeight:1.55}}>{f.config?.goal}</div></div><span style={{fontSize:11,fontWeight:900,color:f.status==="active"?C.green:C.g400}}>{f.status}</span></div>
+    </div>)}</div>}
+    {tab==="record"&&<div style={card}>
+      <select style={field} value={entry.form_id} onChange={e=>setEntry({form_id:e.target.value,student_id:"",score:"",note:"",checks:{}})}><option value="">เลือกแบบสังเกต/แบบทดสอบ</option>{forms.filter(f=>["observation","test"].includes(f.type)).map(f=><option key={f.id} value={f.id}>{ASSESSMENT_TYPES[f.type]?.label} · {f.title}</option>)}</select>
+      <select style={{...field,marginTop:8}} value={entry.student_id} onChange={e=>setEntry(p=>({...p,student_id:e.target.value}))}><option value="">เลือกนักเรียน</option>{entryStudents.map(s=><option key={s.id} value={s.id}>#{s.student_no||"-"} {s.full_name}</option>)}</select>
+      {entryForm?.type==="observation"&&<div style={{marginTop:10,display:"grid",gap:7}}>{(entryForm.config?.rubric||entryForm.config?.questions||[]).map(q=><label key={q} style={{display:"flex",gap:9,alignItems:"center",background:C.g50,borderRadius:9,padding:"9px 10px",fontSize:13,color:C.g700}}><input type="checkbox" checked={!!entry.checks[q]} onChange={e=>setEntry(p=>({...p,checks:{...p.checks,[q]:e.target.checked}}))}/>{q}</label>)}</div>}
+      {entryForm?.type==="test"&&<input style={{...field,marginTop:8}} type="number" value={entry.score} onChange={e=>setEntry(p=>({...p,score:e.target.value}))} placeholder={`คะแนนที่ได้ / ${entryForm?.config?.max_score||100}`}/>}
+      <textarea style={{...field,marginTop:8,minHeight:76}} value={entry.note} onChange={e=>setEntry(p=>({...p,note:e.target.value}))} placeholder="บันทึกเพิ่มเติม/ข้อเสนอแนะรายบุคคล"/>
+      <button onClick={saveResult} disabled={saving} style={{...smallBtn,width:"100%",marginTop:10,background:C.green,color:C.white}}>บันทึกผลรายนักเรียน</button>
+    </div>}
+    {tab==="report"&&<div style={{display:"grid",gap:9}}>{reportRows.length===0?<Empty icon="📈" msg="ยังไม่มีรายงาน"/>:reportRows.map(r=><div key={r.id} style={card}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8}}><div><div style={{fontWeight:900,color:C.navy}}>{r.title}</div><div style={{fontSize:12,color:C.g400}}>{ASSESSMENT_TYPES[r.type]?.label} · {formatThaiDate(r.activity_date||r.created_at)}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:20,fontWeight:900,color:C.gold}}>{r.result_count}</div><div style={{fontSize:11,color:C.g400}}>ผลตอบ/บันทึก</div></div></div>
+      <div style={{display:"flex",gap:8,marginTop:10}}><div style={{flex:1,background:C.g50,borderRadius:10,padding:10}}><div style={{fontSize:12,color:C.g400}}>คะแนนเฉลี่ย</div><div style={{fontSize:17,fontWeight:900,color:C.navy}}>{r.avg??"-"}</div></div><div style={{flex:1,background:C.g50,borderRadius:10,padding:10}}><div style={{fontSize:12,color:C.g400}}>คำถาม/ตัวชี้วัด</div><div style={{fontSize:17,fontWeight:900,color:C.navy}}>{(r.config?.questions||r.config?.rubric||[]).length}</div></div></div>
+    </div>)}</div>}
+  </div>;
+}
+function ParentAssessmentView({token,profile,student}){
+  const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [answers,setAnswers]=useState({});const [msg,setMsg]=useState("");const [busy,setBusy]=useState("");
+  useEffect(()=>{setLoading(true);sbFetch(`assessment_participants?student_id=eq.${student.id}&select=*,assessment_forms(*)&order=created_at.desc`,{token}).then(rows=>setItems((rows||[]).map(x=>x.assessment_forms).filter(f=>f&&f.status==="active"&&["parents","both"].includes(f.audience)))).catch(()=>setItems([])).finally(()=>setLoading(false));},[token,student.id]);
+  async function submit(f){
+    setMsg("");setBusy(f.id);
+    try{
+      await sbFetch("assessment_results",{method:"POST",token,body:JSON.stringify({form_id:f.id,student_id:student.id,submitted_by:profile.id,answers:answers[f.id]||{},note:(answers[f.id]||{}).__note||""})});
+      setMsg("ส่งคำตอบเรียบร้อย ขอบคุณผู้ปกครองครับ");
+    }catch(e){setMsg(e.message||"ส่งคำตอบไม่สำเร็จ");}
+    finally{setBusy("");}
+  }
+  if(loading)return <Spin/>;
+  return <div style={{display:"grid",gap:12}}>
+    <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+      <div style={{fontWeight:900,color:C.navy,fontSize:17}}>แบบสอบถามของ {student.full_name}</div>
+      <div style={{fontSize:12,color:C.g400,marginTop:4}}>ผู้ปกครองจะเห็นเฉพาะแบบสอบถามที่ครูส่งมาให้ตอบ</div>
+    </div>
+    {msg&&<div style={{padding:"10px 12px",borderRadius:10,background:C.greenL,color:C.green,fontSize:13,fontWeight:800}}>{msg}</div>}
+    {items.length===0?<Empty icon="📋" msg="ยังไม่มีแบบสอบถามที่ต้องตอบ"/>:items.map(f=><div key={f.id} style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+      <div style={{fontWeight:900,color:C.navy,fontSize:15}}>{f.title}</div>
+      <div style={{fontSize:12,color:C.g400,marginTop:3}}>{f.level||"-"} · {formatThaiDate(f.activity_date||f.created_at)}</div>
+      <div style={{fontSize:13,color:C.g700,lineHeight:1.55,marginTop:8}}>{f.config?.goal}</div>
+      <div style={{display:"grid",gap:10,marginTop:12}}>
+        {(f.config?.questions||[]).map((q,i)=><div key={q} style={{background:C.g50,borderRadius:10,padding:10}}>
+          <div style={{fontSize:13,fontWeight:800,color:C.navy,marginBottom:7}}>{i+1}. {q}</div>
+          <select value={(answers[f.id]||{})[q]||""} onChange={e=>setAnswers(p=>({...p,[f.id]:{...(p[f.id]||{}),[q]:e.target.value}}))} style={{width:"100%",padding:"9px 10px",borderRadius:9,border:`1.5px solid ${C.g200}`,background:C.white}}>
+            <option value="">เลือกคำตอบ</option>{(f.config?.scale||[]).map(x=><option key={x} value={x}>{x}</option>)}
+          </select>
+        </div>)}
+      </div>
+      <textarea value={(answers[f.id]||{}).__note||""} onChange={e=>setAnswers(p=>({...p,[f.id]:{...(p[f.id]||{}),__note:e.target.value}}))} placeholder="ข้อเสนอแนะเพิ่มเติม" style={{width:"100%",marginTop:10,minHeight:74,padding:"10px 11px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white}}/>
+      <button onClick={()=>submit(f)} disabled={busy===f.id} style={{width:"100%",marginTop:9,border:"none",borderRadius:10,padding:11,background:C.navy,color:C.white,fontWeight:900}}>{busy===f.id?"กำลังส่ง...":"ส่งแบบสอบถาม"}</button>
+    </div>)}
+  </div>;
 }
 
 // ======= TEACHER HOME =======
@@ -2414,6 +2597,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
     {id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>setPage("talk")},
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
+    {id:"assessment",icon:"🏆",label:tx("ประเมิน","Assessment"),bg:"linear-gradient(135deg,#db2777,#f59e0b)",action:()=>setPage("assessment")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>setPage("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
   ];
@@ -2422,7 +2606,8 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
-  if(role==="admin")menus.push({id:"pos",icon:"🧾",label:"POS",bg:"linear-gradient(135deg,#7c2d12,#ea580c)",action:()=>window.open("http://localhost:8088/","_blank","noopener,noreferrer")});
+  if(role==="admin")menus.push({id:"pos",icon:"💵",label:tx("POS เก็บเงิน","POS"),bg:"linear-gradient(135deg,#7c2d12,#ea580c)",action:()=>window.open("http://localhost:8088/","_blank","noopener,noreferrer")});
+  if(role==="admin")menus.push({id:"warehouse",icon:"📦",label:tx("คลังสินค้า","Warehouse"),bg:"linear-gradient(135deg,#0f766e,#14b8a6)",action:()=>window.open("http://localhost:8090/","_blank","noopener,noreferrer")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
   return(
@@ -2656,6 +2841,7 @@ function ParentView({token,profile,userId}){
   if(page==="leave")return <div><Back/><LeaveForm token={token} profile={profile} initStudents={children}/></div>;
   if(page==="checkin")return <div><Back/><AttendHist token={token} studentId={sel.id} studentName={sel.full_name} role="parent"/></div>;
   if(page==="tuition")return <div><Back/><TuitionView token={token} profile={profile} student={sel}/></div>;
+  if(page==="assessment")return <div><Back/><ParentAssessmentView token={token} profile={profile} student={sel}/></div>;
   if(page==="exam")return <div><Back/><ComingSoonView/></div>;
   return(
     <div>
@@ -2847,6 +3033,7 @@ function App(){
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
+      if(subPage==="assessment"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><AssessmentCenter token={token} profile={profile} role={role}/></div>;
       if(subPage==="exam")return <div><Back/><ComingSoonView/></div>;
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
