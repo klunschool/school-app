@@ -2240,7 +2240,6 @@ function TuitionView({token,profile,student}){
   const invoiceItems=inv=>{
     const rows=itemBalances.filter(i=>i.invoice_id===inv.id);
     const outstanding=rows.filter(i=>Number(i.remaining_amount)>0);
-    const completed=rows.filter(i=>Number(i.remaining_amount)<=0);
     const unassigned=Math.max(0,Number(inv.paid_amount)-rows.reduce((n,i)=>n+Number(i.paid_amount),0));
     const itemRow=item=><div key={item.item_id} style={{fontSize:12,padding:"6px 0",borderBottom:`1px solid ${C.g100}`}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12}}><b style={{overflowWrap:"anywhere"}}>{item.description}</b><span style={{whiteSpace:"nowrap"}}>฿{money(item.amount)}</span></div>
@@ -2248,10 +2247,6 @@ function TuitionView({token,profile,student}){
     </div>;
     return <div style={{marginTop:8}}>
       <div aria-label="รายการค้างชำระ">{outstanding.map(itemRow)}</div>
-      {completed.length>0&&<details aria-label="รายการที่ชำระครบแล้ว" style={{marginTop:8,fontSize:12}}>
-        <summary style={{cursor:"pointer",color:C.green,padding:"8px 0",fontWeight:700}}>รายการที่ชำระครบแล้ว ({completed.length})</summary>
-        {completed.map(itemRow)}
-      </details>}
       {unassigned>0&&<div style={{fontSize:12,color:C.yellow,lineHeight:1.7,marginTop:6}}>ยอดชำระรอระบุรายการ ฿{money(unassigned)}<br/>รวมอยู่ในยอดชำระแล้ว แต่ยังไม่แยกลงรายการด้านบน</div>}
     </div>;
   };
@@ -2275,7 +2270,7 @@ function TuitionView({token,profile,student}){
   const reviewPayments=inv=>(isStaff?paymentHistory:payments).filter(p=>p.invoice_id===inv.id).map(p=><div key={p.id} style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:13}}><b>แจ้งชำระ ฿{money(p.amount)}</b>{badge(p.status)}</div>
     {cashInfo(p)}
-    {paymentAllocationInfo(p)}
+    {!isStaff&&paymentAllocationInfo(p)}
     {allocationControls(p)}
     {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts)?.receipt_no&&<div style={{fontSize:12,color:C.green,marginTop:5}}>ใบเสร็จ {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts).receipt_no}</div>}
     {p.reviewed_at&&<div style={{fontSize:11,color:C.g600,marginTop:5}}>ตรวจเมื่อ {formatThaiDateTime(p.reviewed_at)}</div>}
@@ -2423,6 +2418,7 @@ function TuitionView({token,profile,student}){
               </div>
               {receipt&&<div style={{fontSize:11,color:C.green,fontWeight:700,marginTop:5}}>ใบเสร็จ {receipt.receipt_no}</div>}
               {cashInfo(p)}
+              {paymentAllocationInfo(p)}
               {p.review_note&&<div style={{fontSize:11,color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
               {p.slip_path&&<button onClick={()=>openSlip(p.slip_path)} style={{marginTop:7,border:`1px solid ${C.navy}`,background:C.white,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>ดูสลิป</button>}
             </div>;

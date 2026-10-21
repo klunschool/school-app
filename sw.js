@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v69-paid-item-history";
+const CACHE = "school-app-github-v70-history-tab-allocations";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
