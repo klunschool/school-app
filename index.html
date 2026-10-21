@@ -2007,6 +2007,9 @@ function TuitionView({token,profile,student}){
   const [addItemMessage,setAddItemMessage]=useState("");
   const [cashForm,setCashForm]=useState(null);
   const [cashMessage,setCashMessage]=useState("");
+  const [itemBalances,setItemBalances]=useState([]);
+  const [allocationForm,setAllocationForm]=useState(null);
+  const [allocationMessage,setAllocationMessage]=useState("");
   const [error,setError]=useState("");
   const money=n=>Number(n||0).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
   const statusMap={
@@ -2017,13 +2020,17 @@ function TuitionView({token,profile,student}){
   };
   const invoiceStatus=inv=>inv.status==="unpaid"&&Number(inv.paid_amount)>0?"partial":inv.status;
   const invoiceBalance=inv=><div style={{fontSize:12,lineHeight:1.7,color:C.g600,marginTop:8}}>ชำระแล้ว (ตรวจสอบแล้ว) ฿{money(inv.paid_amount)}<br/>คงเหลือ ฿{money(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount)))}</div>;
+  async function loadItemBalances(rows){
+    const ids=(rows||[]).map(i=>i.id);
+    setItemBalances(ids.length?await sbFetch("rpc/get_fee_item_balances",{method:"POST",token,body:JSON.stringify({p_invoice_ids:ids})}):[]);
+  }
 
   const load=useCallback(async()=>{
     setLoading(true);setError("");
     try{
       if(isStaff){
         const [allPay,t,c,allInv]=await Promise.all([
-          sbFetch("payments?select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name))),receipts(receipt_no,issued_at),cash_tuition_payments(recorded_by_name,recorded_at)&order=created_at.desc&limit=300",{token}),
+          sbFetch("payments?select=*,student_invoices(invoice_no,total_amount,student_id,students(full_name,student_no,classes(name))),receipts(receipt_no,issued_at),cash_tuition_payments(recorded_by_name,recorded_at),tuition_payment_item_allocations(item_id,amount)&order=created_at.desc&limit=300",{token}),
           sbFetch("fee_terms?is_active=eq.true&select=*&order=academic_year.desc,term_no.desc",{token}),
           sbFetch("classes?select=id,name&order=id.asc",{token}),
           sbFetch("student_invoices?select=*,fee_terms(name,academic_year,term_no),students(full_name,student_no,classes(name)),invoice_items(id,description,amount)&order=created_at.desc&limit=300",{token})
@@ -2032,6 +2039,7 @@ function TuitionView({token,profile,student}){
         setPayments((allPay||[]).filter(x=>x.status==="pending").reverse());
         setTerms(t||[]);setClasses(c||[]);
         setStaffInvoices(allInv||[]);
+        await loadItemBalances(allInv);
       }else if(isTeacher){
         const links=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id,classes(id,name)`,{token});
         const classIds=(links||[]).map(x=>x.class_id);
@@ -2042,8 +2050,9 @@ function TuitionView({token,profile,student}){
         if(!studentIds.length){setInvoices([]);setPayments([]);return;}
         const inv=await sbFetch(`student_invoices?student_id=in.(${studentIds.join(",")})&select=*,fee_terms(name,academic_year,term_no),students(full_name,student_no,classes(name)),invoice_items(id,description,amount)&order=created_at.desc`,{token});
         setInvoices(inv||[]);
+        await loadItemBalances(inv);
         const invoiceIds=(inv||[]).map(x=>x.id);
-        const classPayments=invoiceIds.length?await sbFetch(`payments?invoice_id=in.(${invoiceIds.join(",")})&select=*,receipts(receipt_no,issued_at),cash_tuition_payments(recorded_by_name,recorded_at)&order=created_at.desc`,{token}):[];
+        const classPayments=invoiceIds.length?await sbFetch(`payments?invoice_id=in.(${invoiceIds.join(",")})&select=*,receipts(receipt_no,issued_at),cash_tuition_payments(recorded_by_name,recorded_at),tuition_payment_item_allocations(item_id,amount)&order=created_at.desc`,{token}):[];
         setPayments(classPayments||[]);
       }else{
         let s=studentInfo;
@@ -2054,9 +2063,10 @@ function TuitionView({token,profile,student}){
         if(!s){setInvoices([]);return;}
         const inv=await sbFetch(`student_invoices?student_id=eq.${s.id}&select=*,fee_terms(name,academic_year,term_no),invoice_items(id,description,amount)&order=created_at.desc`,{token});
         setInvoices(inv||[]);
+        await loadItemBalances(inv);
         const ids=(inv||[]).map(x=>x.id);
         if(ids.length){
-          const pay=await sbFetch(`payments?invoice_id=in.(${ids.join(",")})&select=*,cash_tuition_payments(recorded_by_name,recorded_at)&order=created_at.desc`,{token});
+          const pay=await sbFetch(`payments?invoice_id=in.(${ids.join(",")})&select=*,cash_tuition_payments(recorded_by_name,recorded_at),tuition_payment_item_allocations(item_id,amount)&order=created_at.desc`,{token});
           setPayments(pay||[]);
           const payIds=(pay||[]).map(x=>x.id);
           if(payIds.length){
@@ -2187,6 +2197,23 @@ function TuitionView({token,profile,student}){
     }catch(e){setError(e.message);}
     finally{setBusy("");}
   }
+  async function savePaymentAllocation(){
+    if(!allocationForm||busy)return;
+    const payment=[...paymentHistory,...payments].find(p=>p.id===allocationForm.paymentId);
+    if(!payment)return;
+    const rows=Object.entries(allocationForm.amounts).filter(([,amount])=>Number(amount)>0).map(([id,amount])=>({item_id:Number(id),amount:Number(amount)}));
+    const totalCents=rows.reduce((sum,row)=>sum+Math.round(row.amount*100),0);
+    if(!rows.length||Object.values(allocationForm.amounts).some(a=>a&&!/^\d+(\.\d{1,2})?$/.test(a))||totalCents!==Math.round(Number(payment.amount)*100)){
+      setError(`ยอดที่แยกต้องเท่ากับยอดชำระครั้งนี้ ฿${money(payment.amount)}`);return;
+    }
+    if(!window.confirm(`ยืนยันแยกยอดชำระเดิม ฿${money(payment.amount)} ตามรายการที่เลือก?\nไม่มีการรับเงินหรือหักยอดรวมซ้ำ`))return;
+    setBusy("allocate");setError("");setAllocationMessage("");
+    try{
+      await sbFetch("rpc/allocate_fee_payment",{method:"POST",token,body:JSON.stringify({p_payment_id:payment.id,p_allocations:rows,p_request_id:allocationForm.requestId})});
+      setAllocationForm(null);setAllocationMessage("ระบุรายการที่ชำระแล้ว ยอดชำระรวมและยอดคงเหลือรวมไม่เปลี่ยน");await load();
+    }catch(e){setError(e.message);}
+    finally{setBusy("");}
+  }
   if(loading)return <Spin/>;
   const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
   const cashInfo=p=>{
@@ -2210,11 +2237,36 @@ function TuitionView({token,profile,student}){
       <div style={{display:"flex",gap:8}}><button disabled={!!busy} onClick={recordCash} style={{flex:1,padding:10,border:0,borderRadius:8,background:C.green,color:C.white,fontWeight:800}}>{busy==="cash"?"กำลังบันทึก...":"ยืนยันรับเงินสด"}</button><button disabled={!!busy} onClick={()=>setCashForm(null)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>ยกเลิก</button></div>
     </div>;
   };
-  const invoiceItems=inv=><div style={{marginTop:8}}>{(inv.invoice_items||[]).map(item=><div key={item.id} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:12,padding:"3px 0"}}><span style={{overflowWrap:"anywhere"}}>{item.description}</span><span style={{whiteSpace:"nowrap"}}>฿{money(item.amount)}</span></div>)}</div>;
+  const invoiceItems=inv=>{
+    const rows=itemBalances.filter(i=>i.invoice_id===inv.id);
+    const unassigned=Math.max(0,Number(inv.paid_amount)-rows.reduce((n,i)=>n+Number(i.paid_amount),0));
+    return <div style={{marginTop:8}}>{rows.map(item=><div key={item.item_id} style={{fontSize:12,padding:"6px 0",borderBottom:`1px solid ${C.g100}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12}}><b style={{overflowWrap:"anywhere"}}>{item.description}</b><span style={{whiteSpace:"nowrap"}}>฿{money(item.amount)}</span></div>
+      <div style={{color:C.green,marginTop:3}}>ระบุชำระแล้ว ฿{money(item.paid_amount)}</div><div style={{color:C.g600}}>คงเหลือตามการระบุ ฿{money(item.remaining_amount)}</div>
+    </div>)}{unassigned>0&&<div style={{fontSize:12,color:C.yellow,lineHeight:1.7,marginTop:6}}>ยอดชำระรอระบุรายการ ฿{money(unassigned)}<br/>รวมอยู่ในยอดชำระแล้ว แต่ยังไม่แยกลงรายการด้านบน</div>}</div>;
+  };
+  const paymentAllocationInfo=p=>{
+    const rows=p.tuition_payment_item_allocations||[];
+    return rows.length>0?<div style={{fontSize:12,color:C.green,lineHeight:1.7,marginTop:6}}>{rows.map(a=><div key={a.item_id}>{itemBalances.find(i=>String(i.item_id)===String(a.item_id))?.description||"รายการ"} · ฿{money(a.amount)}</div>)}</div>:null;
+  };
+  const allocationControls=p=>{
+    if(p.status!=="approved"||(p.tuition_payment_item_allocations||[]).length)return null;
+    const rows=itemBalances.filter(i=>i.invoice_id===p.invoice_id&&Number(i.remaining_amount)>0);
+    if(allocationForm?.paymentId!==p.id)return <button disabled={!!busy||!rows.length} onClick={()=>{setError("");setAllocationMessage("");setAllocationForm({paymentId:p.id,amounts:{},requestId:crypto.randomUUID()});}} style={{marginTop:8,padding:"8px 10px",border:`1px solid ${C.navy}`,borderRadius:8,background:C.white,color:C.navy,fontWeight:700}}>ระบุรายการที่ชำระ</button>;
+    const selectedTotal=Object.values(allocationForm.amounts).reduce((sum,a)=>sum+Math.round(Number(a||0)*100),0)/100;
+    return <div style={{display:"grid",gap:8,marginTop:10,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
+      <b style={{fontSize:13}}>แยกยอดที่รับแล้ว ฿{money(p.amount)}</b>
+      {rows.map(item=><label key={item.item_id} style={{fontSize:12,color:C.navy}}>{item.description} · ระบุได้อีก ฿{money(item.remaining_amount)}<input aria-label={`จัดสรร ${item.description}`} type="number" min="0" max={item.remaining_amount} step="0.01" placeholder="0.00" disabled={!!busy} value={allocationForm.amounts[item.item_id]||""} onChange={e=>setAllocationForm(f=>({...f,amounts:{...f.amounts,[item.item_id]:e.target.value},requestId:crypto.randomUUID()}))} style={{width:"100%",padding:10,marginTop:4,border:`1px solid ${C.g200}`,borderRadius:8}}/></label>)}
+      <div style={{fontSize:12,color:Math.round(selectedTotal*100)===Math.round(Number(p.amount)*100)?C.green:C.red}}>ระบุแล้ว ฿{money(selectedTotal)} / ฿{money(p.amount)}</div>
+      <div style={{display:"flex",gap:8}}><button disabled={!!busy} onClick={savePaymentAllocation} style={{flex:1,padding:10,border:0,borderRadius:8,background:C.navy,color:C.white,fontWeight:800}}>บันทึกการแยกรายการ</button><button disabled={!!busy} onClick={()=>setAllocationForm(null)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>ยกเลิก</button></div>
+    </div>;
+  };
   const badge=status=>{const x=statusMap[status]||[status,C.g600,C.g100];return <span style={{background:x[2],color:x[1],borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{x[0]}</span>;};
   const reviewPayments=inv=>(isStaff?paymentHistory:payments).filter(p=>p.invoice_id===inv.id).map(p=><div key={p.id} style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:13}}><b>แจ้งชำระ ฿{money(p.amount)}</b>{badge(p.status)}</div>
     {cashInfo(p)}
+    {paymentAllocationInfo(p)}
+    {allocationControls(p)}
     {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts)?.receipt_no&&<div style={{fontSize:12,color:C.green,marginTop:5}}>ใบเสร็จ {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts).receipt_no}</div>}
     {p.reviewed_at&&<div style={{fontSize:11,color:C.g600,marginTop:5}}>ตรวจเมื่อ {formatThaiDateTime(p.reviewed_at)}</div>}
     {p.review_note&&<div style={{fontSize:12,color:C.red,marginTop:5}}>เหตุผล: {p.review_note}</div>}
@@ -2239,6 +2291,7 @@ function TuitionView({token,profile,student}){
       {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
       {addItemMessage&&<div role="status" style={{background:C.greenL,color:C.green,borderRadius:8,padding:12,fontSize:13,fontWeight:700}}>{addItemMessage}</div>}
       {cashMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{cashMessage}</div>}
+      {allocationMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{allocationMessage}</div>}
       <div style={{background:C.white,borderRadius:12,padding:5,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         {[{id:"manage",label:"จัดการ"},{id:"invoices",label:"ใบแจ้งยอด"},{id:"history",label:"ประวัติ"}].map(x=><button key={x.id} onClick={()=>setStaffSection(x.id)} style={{border:"none",borderRadius:9,padding:"9px 4px",background:staffSection===x.id?C.navy:C.g100,color:staffSection===x.id?C.white:C.g600,fontWeight:800,fontSize:12,cursor:"pointer"}}>{x.label}</button>)}
       </div>
@@ -2379,6 +2432,7 @@ function TuitionView({token,profile,student}){
           <div style={{fontSize:12,color:C.g400,marginTop:3}}>{teacherClasses.map(x=>x.name).join(", ")||"-"}</div>
         </div>
         {cashMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{cashMessage}</div>}
+        {allocationMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{allocationMessage}</div>}
         {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
           {[
@@ -2427,13 +2481,14 @@ function TuitionView({token,profile,student}){
             {badge(invoiceStatus(inv))}
           </div>
           <div style={{marginTop:12,borderTop:`1px solid ${C.g100}`,paddingTop:8}}>
-            {(inv.invoice_items||[]).map(x=><div key={x.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>{x.description}</span><b>{money(x.amount)}</b></div>)}
+            {invoiceItems(inv)}
             <div style={{display:"flex",justifyContent:"space-between",fontSize:16,paddingTop:8,marginTop:5,borderTop:`1px solid ${C.g200}`,color:C.navy}}><b>ยอดรวม</b><b>฿{money(inv.total_amount)}</b></div>
             {invoiceBalance(inv)}
           </div>
           {invPayments.map(p=>{const receipt=receipts.find(r=>r.payment_id===p.id);return <div key={p.id} style={{marginTop:10,background:C.g50,borderRadius:10,padding:10,fontSize:12}}>
             <div style={{display:"flex",justifyContent:"space-between"}}><span>แจ้งชำระ ฿{money(p.amount)}</span>{badge(p.status)}</div>
             {cashInfo(p)}
+            {paymentAllocationInfo(p)}
             {p.review_note&&<div style={{color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
             {receipt&&<div style={{color:C.green,fontWeight:700,marginTop:4}}>ใบเสร็จเลขที่ {receipt.receipt_no}</div>}
           </div>;})}
