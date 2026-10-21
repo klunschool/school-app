@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v70-history-tab-allocations";
+const CACHE = "school-app-github-v71-duplicate-receipt-warning";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
