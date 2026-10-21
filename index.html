@@ -2741,6 +2741,20 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   const [studentCount,setStudentCount]=useState(0);
   const [talkUnread,setTalkUnread]=useState(0);
   const [parentRequestCount,setParentRequestCount]=useState(0);
+  const [tuitionPendingCount,setTuitionPendingCount]=useState(0);
+  const [tuitionPendingError,setTuitionPendingError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    const refresh=async()=>{
+      try{
+        const count=await sbFetch("rpc/get_pending_tuition_review_count",{method:"POST",token,body:"{}"});
+        if(active){setTuitionPendingCount(Number(count||0));setTuitionPendingError("");}
+      }catch(e){if(active)setTuitionPendingError("โหลดจำนวนสลิปรอตรวจไม่สำเร็จ");}
+    };
+    refresh();const timer=setInterval(refresh,15000);
+    window.addEventListener("focus",refresh);
+    return()=>{active=false;clearInterval(timer);window.removeEventListener("focus",refresh);};
+  },[token,profile.id,role]);
   useEffect(()=>{
     let timer=null;
     let lastStudentIds=[];
@@ -2786,7 +2800,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"assessment",icon:"🏆",label:tx("ประเมิน","Assessment"),bg:"linear-gradient(135deg,#db2777,#f59e0b)",action:()=>setPage("assessment")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>setPage("exam")},
-    {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",action:()=>setPage("tuition")},
+    {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",badge:tuitionPendingCount,action:()=>setPage("tuition")},
   ];
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-usage",icon:"📱",label:tx("เข้าใช้งานผู้ปกครอง","Parent usage"),bg:"linear-gradient(135deg,#2563eb,#06b6d4)",action:()=>setPage("parent-usage")});
@@ -2799,6 +2813,8 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(loading)return <Spin/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {tuitionPendingCount>0&&<button onClick={()=>setPage("tuition")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.yellow}`,borderRadius:8,background:C.yellowL,color:C.navy,fontSize:14,fontWeight:800,lineHeight:1.6}}>🔔 มีหลักฐานชำระค่าเทอมรอตรวจ {tuitionPendingCount} รายการ</button>}
+      {tuitionPendingError&&<div role="status" style={{fontSize:12,color:C.red}}>{tuitionPendingError}</div>}
       {/* Profile banner ครู */}
       <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,borderRadius:20,padding:20,position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",right:-15,top:-15,width:110,height:110,borderRadius:99,background:"rgba(201,162,39,0.12)"}}/>
