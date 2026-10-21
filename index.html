@@ -1294,6 +1294,30 @@ function Messages({token,profile}){
 }
 
 // ======= PARENT-TEACHER TALK =======
+function formatTuitionMessage(body){
+  const labels=[
+    [/^แจ้งเตือนค่าเทอมประจำวัน/,"🔔"],
+    [/^แจ้งสถานะค่าเทอม/,"📣"],
+    [/^เรียน\s/,"👪"],
+    [/^ภาคเรียน/,"🏫"],
+    [/^ยอดรวม:/,"💰"],
+    [/^ชำระแล้ว \(ตรวจสอบแล้ว\):/,"✅"],
+    [/^คงเหลือตามบัญชี:/,"🧾"],
+    [/^ยอดสลิปรอตรวจสอบ:/,"⏳"],
+    [/^สถานะ:/,"📌"],
+    [/^ครบกำหนด:/,"📅"],
+    [/^ข้อมูล ณ /,"🕘"],
+    [/^(ยอดที่ส่งสลิปแล้ว|โรงเรียนได้รับหลักฐานแล้ว)/,"⏳"],
+    [/^ขอความกรุณาผู้ปกครอง/,"🙏"],
+    [/^หากชำระแล้ว/,"📎"],
+    [/^โรงเรียนได้รับและตรวจสอบยอดชำระครบถ้วนแล้ว/,"✅"],
+    [/^ใบแจ้งยอดนี้ถูกยกเลิกแล้ว/,"ℹ️"]
+  ];
+  return String(body||"").split("\n").map(line=>{
+    const match=labels.find(([pattern])=>pattern.test(line));
+    return match?`${match[1]} ${line}`:line;
+  }).join("\n");
+}
 function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null}){
   const [students,setStudents]=useState([]);
   const [selected,setSelected]=useState(student||null);
@@ -1431,7 +1455,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
             return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
               <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
                 {m.isTuition&&<div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:6}}>ฝ่ายการเงิน · ข้อความอัตโนมัติ</div>}
-                <div style={{fontSize:14,lineHeight:1.55,whiteSpace:"pre-line",wordBreak:"break-word"}}>{m.body}</div>
+                <div style={{fontSize:14,lineHeight:m.isTuition?1.8:1.55,whiteSpace:"pre-line",wordBreak:"break-word"}}>{m.isTuition?formatTuitionMessage(m.body):m.body}</div>
                 {m.isTuition&&!isStaff&&onOpenTuition&&<button onClick={onOpenTuition} style={{marginTop:8,padding:"7px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูค่าเทอม / ส่งหลักฐาน</button>}
                 <div style={{fontSize:10,opacity:0.65,marginTop:4,textAlign:mine?"right":"left"}}>{formatThaiDateTime(m.created_at)}</div>
               </div>
