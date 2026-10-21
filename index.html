@@ -2230,7 +2230,15 @@ function TuitionView({token,profile,student}){
     if(!window.confirm(`ยืนยันรับชำระเงินสด ${money(amount)} บาท\nนักเรียน ${invoice.students?.full_name||invoice.invoice_no}\nเลขใบเสร็จ ${cashForm.receipt.trim()}\nยอดนี้จะได้รับการอนุมัติโดยบัญชีของคุณทันที ยืนยันหรือไม่?`))return;
     setBusy("cash");setError("");setCashMessage("");setAddItemMessage("");
     try{
-      const result=await sbFetch("rpc/record_cash_tuition_payment_with_items",{method:"POST",token,body:JSON.stringify({p_invoice_id:cashForm.invoiceId,p_amount:amount,p_paid_at:cashForm.paidAt+":00+07:00",p_receipt_number:cashForm.receipt.trim(),p_request_id:cashForm.requestId,p_note:cashForm.note.trim(),p_allocations:allocations})});
+      let imagePath=cashForm.uploadedImagePath||null;
+      if(cashForm.image&&!imagePath){
+        const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[cashForm.image.type];
+        if(!ext||cashForm.image.size>5*1024*1024)throw new Error("กรุณาใช้รูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB");
+        imagePath=`${profile.id}/cash/${cashForm.invoiceId}/${crypto.randomUUID()}.${ext}`;
+        await uploadPaymentSlip(cashForm.image,imagePath,token);
+        setCashForm(v=>({...v,uploadedImagePath:imagePath}));
+      }
+      const result=await sbFetch("rpc/record_cash_tuition_payment_with_receipt",{method:"POST",token,body:JSON.stringify({p_invoice_id:cashForm.invoiceId,p_amount:amount,p_paid_at:cashForm.paidAt+":00+07:00",p_receipt_number:cashForm.receipt.trim(),p_request_id:cashForm.requestId,p_note:cashForm.note.trim(),p_allocations:allocations,p_receipt_image_path:imagePath})});
       setCashForm(null);setCashMessage(`บันทึกเงินสดแล้ว · ใบเสร็จ ${cashForm.receipt.trim()} · คงเหลือ ฿${money(result.remaining_amount)}`);await load();
     }catch(e){setError(/Receipt number already recorded|receipt_key/i.test(e.message)?"เลขใบเสร็จนี้เคยบันทึกแล้ว กรุณาตรวจสอบประวัติ ไม่สามารถรับเงินซ้ำด้วยเลขนี้ได้":e.message);}
     finally{setBusy("");}
@@ -2259,6 +2267,7 @@ function TuitionView({token,profile,student}){
     const info=Array.isArray(p.cash_tuition_payments)?p.cash_tuition_payments[0]:p.cash_tuition_payments;
     return <div style={{fontSize:12,lineHeight:1.7,color:C.navy,marginTop:6}}>💵 เงินสด · รับเงินจริง {formatThaiDateTime(p.paid_at)}{info&&<><br/>ผู้บันทึก/อนุมัติ: {info.recorded_by_name}<br/>บันทึกเข้าระบบ: {formatThaiDateTime(info.recorded_at)}</>}</div>;
   };
+  const receiptImageButton=p=>p.receipt_image_path?<button onClick={()=>openSlip(p.receipt_image_path)} style={{marginTop:8,padding:"8px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูรูปใบเสร็จ</button>:null;
   const paymentItemInputs=(invoiceId,amounts,onChange)=><fieldset style={{margin:0,padding:10,border:`1px solid ${C.g200}`,borderRadius:8,minWidth:0}}>
     <legend style={{fontSize:12,fontWeight:700}}>ระบุรายการที่ชำระ</legend>
     {itemBalances.filter(i=>i.invoice_id===invoiceId&&Number(i.remaining_amount)>0).map(i=><label key={i.item_id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 110px",alignItems:"center",gap:8,fontSize:12,marginTop:6}}>
@@ -2282,6 +2291,13 @@ function TuitionView({token,profile,student}){
       <label style={{fontSize:12}}>วันที่และเวลารับเงินจริง (เวลาไทย)<input aria-label="เวลารับเงินสด" type="datetime-local" disabled={!!busy} value={cashForm.paidAt} onChange={e=>change("paidAt",e.target.value)} style={{...inputStyle,minWidth:0}}/></label>
       <label style={{fontSize:12,color:existingReceipt?C.red:undefined}}>เลขใบเสร็จที่ออกแล้ว<input aria-label="เลขใบเสร็จเงินสด" aria-invalid={!!existingReceipt} maxLength={100} disabled={!!busy} value={cashForm.receipt} onChange={e=>change("receipt",e.target.value)} onKeyDown={e=>{if(existingReceipt&&e.key==="Tab"&&!e.shiftKey)e.preventDefault();}} style={{...inputStyle,...(existingReceipt?{border:`2px solid ${C.red}`,color:C.red,background:C.redL,outlineColor:C.red}:{})}}/></label>
       {existingReceipt&&<div role="alert" style={{fontSize:12,color:C.red,background:C.redL,padding:10,borderRadius:8,lineHeight:1.7}}>เลขใบเสร็จนี้เคยบันทึกแล้ว · ยอด ฿{money(existingReceipt.amount)} · วันที่ {formatThaiDateTime(existingReceipt.paid_at)}<br/>กรุณาตรวจสอบแท็บประวัติ ไม่สามารถบันทึกรับเงินซ้ำด้วยเลขนี้ได้</div>}
+      <label style={{fontSize:12}}>รูปใบเสร็จ (ถ้ามี)<input key={cashForm.imageInputKey||0} aria-label="แนบรูปใบเสร็จ" type="file" accept="image/jpeg,image/png,image/webp" disabled={!!busy||!!existingReceipt} onChange={e=>{
+        const file=e.target.files?.[0];
+        if(!file){change("image",null);setCashForm(v=>({...v,imagePreview:null,uploadedImagePath:null}));return;}
+        if(!["image/jpeg","image/png","image/webp"].includes(file.type)||!file.size||file.size>5*1024*1024){setError("กรุณาใช้รูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB");e.target.value="";return;}
+        setError("");const reader=new FileReader();reader.onload=()=>setCashForm(v=>v?{...v,image:file,imagePreview:reader.result,uploadedImagePath:null,requestId:crypto.randomUUID()}:v);reader.readAsDataURL(file);
+      }} style={{display:"block",width:"100%",marginTop:6}}/></label>
+      {cashForm.imagePreview&&<div><img alt="รูปใบเสร็จที่แนบ" src={cashForm.imagePreview} style={{display:"block",maxWidth:"100%",maxHeight:240,objectFit:"contain"}}/><button type="button" disabled={!!busy} onClick={()=>setCashForm(v=>({...v,image:null,imagePreview:null,uploadedImagePath:null,imageInputKey:(v.imageInputKey||0)+1,requestId:crypto.randomUUID()}))} style={{marginTop:6,border:0,background:C.redL,color:C.red,padding:8,borderRadius:6}}>นำรูปออก</button></div>}
       <label style={{fontSize:12}}>หมายเหตุ (ถ้ามี)<textarea aria-label="หมายเหตุเงินสด" maxLength={1000} disabled={!!busy||!!existingReceipt} value={cashForm.note} onChange={e=>change("note",e.target.value)} style={{...inputStyle,resize:"vertical"}}/></label>
       <div style={{fontSize:12,color:C.navy}}>ผู้บันทึก/อนุมัติ: {profile.full_name}<br/>คงเหลือหลังรับเงิน ฿{money(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount)-Math.max(0,Number(cashForm.amount)||0)))}</div>
       <div style={{display:"flex",gap:8}}><button disabled={!!busy||!!existingReceipt} onClick={recordCash} style={{flex:1,padding:10,border:0,borderRadius:8,background:existingReceipt?C.g400:C.green,color:C.white,fontWeight:800}}>{busy==="cash"?"กำลังบันทึก...":"ยืนยันรับเงินสด"}</button><button disabled={!!busy} onClick={()=>setCashForm(null)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>ยกเลิก</button></div>
@@ -2319,6 +2335,7 @@ function TuitionView({token,profile,student}){
   const reviewPayments=inv=>(isStaff?paymentHistory:payments).filter(p=>p.invoice_id===inv.id).map(p=><div key={p.id} style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.g200}`}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:13}}><b>แจ้งชำระ ฿{money(p.amount)}</b>{badge(p.status)}</div>
     {cashInfo(p)}
+    {receiptImageButton(p)}
     {!isStaff&&paymentAllocationInfo(p)}
     {allocationControls(p)}
     {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts)?.receipt_no&&<div style={{fontSize:12,color:C.green,marginTop:5}}>ใบเสร็จ {(Array.isArray(p.receipts)?p.receipts[0]:p.receipts).receipt_no}</div>}
@@ -2366,6 +2383,7 @@ function TuitionView({token,profile,student}){
               <b style={{color:C.navy}}>{inv?.students?.full_name||"-"}</b><div>{inv?.students?.classes?.name||"-"} · เลขที่ {inv?.students?.student_no||"-"}</div>
               <div>อินวอยซ์: {inv?.invoice_no||"-"}</div>
               {lookupMode==="receipt"?<><div>ใบเสร็จ: {(Array.isArray(row.receipts)?row.receipts:[row.receipts]).filter(Boolean).map(r=>r.receipt_no).join(", ")}</div><div>ยอดชำระ ฿{money(row.amount)} · {formatThaiDateTime(row.paid_at)}</div>{badge(row.status)}{cashInfo(row)}</>:<><div>{row.fee_terms?.name}</div>{badge(invoiceStatus(row))}<div>ยอดเดิม ฿{money(row.total_amount)}</div><div>ชำระแล้ว ฿{money(row.paid_amount)}</div></>}
+              {lookupMode==="receipt"&&receiptImageButton(row)}
               <div style={{fontWeight:800,color:C.navy,marginTop:6}}>คงเหลือปัจจุบัน ฿{money(Math.max(0,Number(inv?.total_amount||0)-Number(inv?.paid_amount||0)))}</div>
             </div>;
           })}
@@ -2490,6 +2508,7 @@ function TuitionView({token,profile,student}){
               </div>
               {receipt&&<div style={{fontSize:11,color:C.green,fontWeight:700,marginTop:5}}>ใบเสร็จ {receipt.receipt_no}</div>}
               {cashInfo(p)}
+              {receiptImageButton(p)}
               {paymentAllocationInfo(p)}
               {p.review_note&&<div style={{fontSize:11,color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
               {p.slip_path&&<button onClick={()=>openSlip(p.slip_path)} style={{marginTop:7,border:`1px solid ${C.navy}`,background:C.white,color:C.navy,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>ดูสลิป</button>}
@@ -2567,6 +2586,7 @@ function TuitionView({token,profile,student}){
             <div style={{display:"flex",justifyContent:"space-between"}}><span>แจ้งชำระ ฿{money(p.amount)}</span>{badge(p.status)}</div>
             {cashInfo(p)}
             {paymentAllocationInfo(p)}
+            {receiptImageButton(p)}
             {p.review_note&&<div style={{color:C.red,marginTop:4}}>หมายเหตุ: {p.review_note}</div>}
             {receipt&&<div style={{color:C.green,fontWeight:700,marginTop:4}}>ใบเสร็จเลขที่ {receipt.receipt_no}</div>}
           </div>;})}
