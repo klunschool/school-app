@@ -1990,6 +1990,11 @@ function TuitionView({token,profile,student}){
   const [staffSection,setStaffSection]=useState("manage");
   const [invoiceClass,setInvoiceClass]=useState("all");
   const [historyClass,setHistoryClass]=useState("all");
+  const [lookupMode,setLookupMode]=useState("receipt");
+  const [lookupNumber,setLookupNumber]=useState("");
+  const [lookupResults,setLookupResults]=useState(null);
+  const [lookupBusy,setLookupBusy]=useState(false);
+  const [lookupError,setLookupError]=useState("");
   const [receipts,setReceipts]=useState([]);
   const [terms,setTerms]=useState([]);
   const [classes,setClasses]=useState([]);
@@ -2021,6 +2026,20 @@ function TuitionView({token,profile,student}){
   };
   const invoiceStatus=inv=>inv.status==="unpaid"&&Number(inv.paid_amount)>0?"partial":inv.status;
   const invoiceBalance=inv=><div style={{fontSize:12,lineHeight:1.7,color:C.g600,marginTop:8}}>ชำระแล้ว (ตรวจสอบแล้ว) ฿{money(inv.paid_amount)}<br/>คงเหลือ ฿{money(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount)))}</div>;
+  async function searchTuitionNumber(e){
+    e.preventDefault();
+    const value=lookupNumber.trim();
+    if(!value||lookupBusy)return;
+    setLookupBusy(true);setLookupError("");setLookupResults(null);
+    try{
+      const filter=encodeURIComponent(value);
+      const query=lookupMode==="receipt"
+        ?`payments?select=*,receipts!inner(receipt_no,issued_at),student_invoices(invoice_no,total_amount,paid_amount,students(full_name,student_no,classes(name))),cash_tuition_payments(recorded_by_name,recorded_at)&receipts.receipt_no=eq.${filter}&order=created_at.desc&limit=50`
+        :`student_invoices?select=*,students(full_name,student_no,classes(name)),fee_terms(name)&invoice_no=eq.${filter}&order=created_at.desc&limit=50`;
+      setLookupResults(await sbFetch(query,{token})||[]);
+    }catch(e){setLookupError(e.message);}
+    finally{setLookupBusy(false);}
+  }
   async function loadItemBalances(rows){
     const ids=(rows||[]).map(i=>i.id);
     setItemBalances(ids.length?await sbFetch("rpc/get_fee_item_balances",{method:"POST",token,body:JSON.stringify({p_invoice_ids:ids})}):[]);
@@ -2273,8 +2292,7 @@ function TuitionView({token,profile,student}){
     const outstanding=rows.filter(i=>Number(i.remaining_amount)>0);
     const unassigned=Math.max(0,Number(inv.paid_amount)-rows.reduce((n,i)=>n+Number(i.paid_amount),0));
     const itemRow=item=><div key={item.item_id} style={{fontSize:12,padding:"6px 0",borderBottom:`1px solid ${C.g100}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:12}}><b style={{overflowWrap:"anywhere"}}>{item.description}</b><span style={{whiteSpace:"nowrap"}}>฿{money(item.amount)}</span></div>
-      <div style={{color:C.green,marginTop:3}}>ระบุชำระแล้ว ฿{money(item.paid_amount)}</div><div style={{color:C.g600}}>คงเหลือตามการระบุ ฿{money(item.remaining_amount)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12}}><div><b style={{overflowWrap:"anywhere"}}>{item.description}</b><div style={{color:C.green,marginTop:3}}>ระบุชำระแล้ว ฿{money(item.paid_amount)}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:11,color:C.g600}}>คงเหลือปัจจุบัน</div><b style={{whiteSpace:"nowrap",color:C.navy}}>฿{money(item.remaining_amount)}</b><div style={{fontSize:11,color:C.g400,marginTop:3}}>ยอดเดิม ฿{money(item.amount)}</div></div></div>
     </div>;
     return <div style={{marginTop:8}}>
       <div aria-label="รายการค้างชำระ">{outstanding.map(itemRow)}</div>
@@ -2329,9 +2347,30 @@ function TuitionView({token,profile,student}){
       {addItemMessage&&<div role="status" style={{background:C.greenL,color:C.green,borderRadius:8,padding:12,fontSize:13,fontWeight:700}}>{addItemMessage}</div>}
       {cashMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{cashMessage}</div>}
       {allocationMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{allocationMessage}</div>}
-      <div style={{background:C.white,borderRadius:12,padding:5,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        {[{id:"manage",label:"จัดการ"},{id:"invoices",label:"ใบแจ้งยอด"},{id:"history",label:"ประวัติ"}].map(x=><button key={x.id} onClick={()=>setStaffSection(x.id)} style={{border:"none",borderRadius:9,padding:"9px 4px",background:staffSection===x.id?C.navy:C.g100,color:staffSection===x.id?C.white:C.g600,fontWeight:800,fontSize:12,cursor:"pointer"}}>{x.label}</button>)}
+      <div style={{background:C.white,borderRadius:12,padding:5,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        {[{id:"manage",label:"จัดการ"},{id:"invoices",label:"ใบแจ้งยอด"},{id:"history",label:"ประวัติ"},{id:"search",label:"ค้นหา"}].map(x=><button key={x.id} onClick={()=>setStaffSection(x.id)} style={{border:"none",borderRadius:9,padding:"9px 4px",background:staffSection===x.id?C.navy:C.g100,color:staffSection===x.id?C.white:C.g600,fontWeight:800,fontSize:12,cursor:"pointer"}}>{x.label}</button>)}
       </div>
+      {staffSection==="search"&&<div style={box}>
+        <h3 style={{fontSize:14,margin:"0 0 12px",color:C.navy}}>ค้นหาใบเสร็จ / อินวอยซ์</h3>
+        <form onSubmit={searchTuitionNumber} style={{display:"grid",gap:10}}>
+          <label style={{fontSize:12}}>ค้นหาด้วย<select aria-label="ประเภทเลขที่ค้นหา" disabled={lookupBusy} value={lookupMode} onChange={e=>{setLookupMode(e.target.value);setLookupResults(null);setLookupError("");}} style={{display:"block",width:"100%",padding:10,marginTop:4,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}><option value="receipt">เลขใบเสร็จ</option><option value="invoice">เลขอินวอยซ์</option></select></label>
+          <label style={{fontSize:12}}>{lookupMode==="receipt"?"เลขใบเสร็จ":"เลขอินวอยซ์"}<input aria-label="เลขที่ค้นหา" required maxLength={100} disabled={lookupBusy} value={lookupNumber} onChange={e=>{setLookupNumber(e.target.value);setLookupResults(null);}} style={{width:"100%",padding:10,marginTop:4,border:`1px solid ${C.g200}`,borderRadius:8}}/></label>
+          <button type="submit" disabled={lookupBusy||!lookupNumber.trim()} style={{padding:10,border:0,borderRadius:8,background:C.navy,color:C.white,fontWeight:700}}>{lookupBusy?"กำลังค้นหา...":"ค้นหารายการ"}</button>
+        </form>
+        {lookupError&&<div role="alert" style={{color:C.red,fontSize:12,marginTop:12}}>{lookupError}</div>}
+        {lookupResults&&<div aria-live="polite" style={{marginTop:14}}><div style={{fontSize:12,color:C.g600}}>พบ {lookupResults.length} รายการ</div>
+          {lookupResults.length===0&&<div style={{padding:"16px 0",fontSize:13,color:C.g600}}>ไม่พบเลขที่นี้ในข้อมูลที่คุณมีสิทธิ์เข้าถึง</div>}
+          {lookupResults.map(row=>{
+            const inv=lookupMode==="receipt"?row.student_invoices:row;
+            return <div key={row.id} style={{padding:"12px 0",borderBottom:`1px solid ${C.g200}`,fontSize:12,lineHeight:1.8,overflowWrap:"anywhere"}}>
+              <b style={{color:C.navy}}>{inv?.students?.full_name||"-"}</b><div>{inv?.students?.classes?.name||"-"} · เลขที่ {inv?.students?.student_no||"-"}</div>
+              <div>อินวอยซ์: {inv?.invoice_no||"-"}</div>
+              {lookupMode==="receipt"?<><div>ใบเสร็จ: {(Array.isArray(row.receipts)?row.receipts:[row.receipts]).filter(Boolean).map(r=>r.receipt_no).join(", ")}</div><div>ยอดชำระ ฿{money(row.amount)} · {formatThaiDateTime(row.paid_at)}</div>{badge(row.status)}{cashInfo(row)}</>:<><div>{row.fee_terms?.name}</div>{badge(invoiceStatus(row))}<div>ยอดเดิม ฿{money(row.total_amount)}</div><div>ชำระแล้ว ฿{money(row.paid_amount)}</div></>}
+              <div style={{fontWeight:800,color:C.navy,marginTop:6}}>คงเหลือปัจจุบัน ฿{money(Math.max(0,Number(inv?.total_amount||0)-Number(inv?.paid_amount||0)))}</div>
+            </div>;
+          })}
+        </div>}
+      </div>}
       {staffSection==="manage"&&<div style={box}>
         <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดเฉพาะคน</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
