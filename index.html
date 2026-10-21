@@ -1946,6 +1946,10 @@ function TuitionView({token,profile,student}){
   const [classes,setClasses]=useState([]);
   const [invoiceStudents,setInvoiceStudents]=useState([]);
   const [selectedStudentIds,setSelectedStudentIds]=useState([]);
+  const [invoiceStudentSearch,setInvoiceStudentSearch]=useState("");
+  const [invoiceStudentsLoading,setInvoiceStudentsLoading]=useState(false);
+  const [invoiceStudentsError,setInvoiceStudentsError]=useState("");
+  const [invoiceStudentReload,setInvoiceStudentReload]=useState(0);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState("");
   const [form,setForm]=useState({invoiceId:"",amount:"",file:null});
@@ -2008,15 +2012,19 @@ function TuitionView({token,profile,student}){
   },[token,profile.id,isStaff,isTeacher,studentInfo?.id]);
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
+    let active=true;
+    setInvoiceStudents([]);setSelectedStudentIds([]);setInvoiceStudentSearch("");setInvoiceStudentsError("");
     if(!isStaff||!createForm.classId){
-      setInvoiceStudents([]);
-      setSelectedStudentIds([]);
+      setInvoiceStudentsLoading(false);
       return;
     }
+    setInvoiceStudentsLoading(true);
     sbFetch(`students?class_id=eq.${createForm.classId}&select=id,full_name,student_no&order=student_no.asc,full_name.asc`,{token})
-      .then(r=>{setInvoiceStudents(r||[]);setSelectedStudentIds([]);})
-      .catch(()=>{setInvoiceStudents([]);setSelectedStudentIds([]);});
-  },[token,isStaff,createForm.classId]);
+      .then(r=>{if(active)setInvoiceStudents(r||[]);})
+      .catch(e=>{if(active)setInvoiceStudentsError(e.message||"โหลดรายชื่อนักเรียนไม่สำเร็จ");})
+      .finally(()=>{if(active)setInvoiceStudentsLoading(false);});
+    return ()=>{active=false;};
+  },[token,isStaff,createForm.classId,invoiceStudentReload]);
 
   async function submitPayment(){
     const invoice=invoices.find(x=>x.id===form.invoiceId);
@@ -2061,9 +2069,13 @@ function TuitionView({token,profile,student}){
     finally{setBusy("");}
   }
   async function createInvoices(){
+    if(invoiceStudentsLoading||invoiceStudentsError||selectedStudentIds.some(id=>!invoiceStudents.some(s=>String(s.id)===id))){
+      setError("กรุณารอรายชื่อนักเรียนโหลดสำเร็จ แล้วเลือกผู้รับใบแจ้งยอดอีกครั้ง");return;
+    }
     if(!createForm.termId||!createForm.classId||selectedStudentIds.length===0||!createForm.description.trim()||Number(createForm.amount)<=0||!createForm.dueDate){
       setError("กรุณากรอกข้อมูลใบแจ้งยอดให้ครบ");return;
     }
+    if(!window.confirm(`สร้างใบแจ้งยอดเฉพาะนักเรียนที่เลือก ${selectedStudentIds.length} คน คนละ ${money(createForm.amount)} บาท รวม ${money(Number(createForm.amount)*selectedStudentIds.length)} บาท ใช่หรือไม่?`))return;
     setBusy("create");setError("");
     try{
       const result=await sbFetch("rpc/create_fee_invoices_for_students",{method:"POST",token,body:JSON.stringify({
@@ -2073,7 +2085,8 @@ function TuitionView({token,profile,student}){
         p_due_date:createForm.dueDate,
         p_student_ids:selectedStudentIds.map(Number)
       })});
-      alert(`สร้างใบแจ้งยอดสำเร็จ ${Number(result||0)} รายการ`);
+      const createdCount=Number(result||0);
+      alert(`สร้างใบแจ้งยอดใหม่ ${createdCount} รายการ${createdCount<selectedStudentIds.length?` · ข้าม ${selectedStudentIds.length-createdCount} คนที่มีใบแจ้งยอดในภาคเรียนนี้แล้ว`:""}`);
       setCreateForm(p=>({...p,description:"ค่าเล่าเรียน",amount:""}));
       setSelectedStudentIds([]);
       await load();
@@ -2085,6 +2098,7 @@ function TuitionView({token,profile,student}){
   const box={background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
   const badge=status=>{const x=statusMap[status]||[status,C.g600,C.g100];return <span style={{background:x[2],color:x[1],borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:800}}>{x[0]}</span>;};
   const filteredStaffInvoices=staffInvoices.filter(x=>invoiceClass==="all"||String(x.students?.classes?.name)===invoiceClass);
+  const visibleInvoiceStudents=invoiceStudents.filter(s=>`${s.full_name} ${s.student_no||""}`.toLowerCase().includes(invoiceStudentSearch.trim().toLowerCase()));
   const filteredPaymentHistory=paymentHistory.filter(p=>
     (historyStatus==="all"||p.status===historyStatus)&&
     (historyClass==="all"||String(p.student_invoices?.students?.classes?.name)===historyClass)
@@ -2101,25 +2115,26 @@ function TuitionView({token,profile,student}){
         {[{id:"manage",label:"จัดการ"},{id:"invoices",label:"ใบแจ้งยอด"},{id:"history",label:"ประวัติ"}].map(x=><button key={x.id} onClick={()=>setStaffSection(x.id)} style={{border:"none",borderRadius:9,padding:"9px 4px",background:staffSection===x.id?C.navy:C.g100,color:staffSection===x.id?C.white:C.g600,fontWeight:800,fontSize:12,cursor:"pointer"}}>{x.label}</button>)}
       </div>
       {staffSection==="manage"&&<div style={box}>
-        <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดทั้งห้อง</div>
+        <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดเฉพาะคน</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <select value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
             <option value="">เลือกปีการศึกษา/ภาคเรียน</option>
             {terms.map(t=><option key={t.id} value={t.id}>{t.name} ({t.academic_year})</option>)}
           </select>
-          <select value={createForm.classId} onChange={e=>setCreateForm(p=>({...p,classId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
+          <select value={createForm.classId} onChange={e=>{setInvoiceStudents([]);setSelectedStudentIds([]);setInvoiceStudentsLoading(!!e.target.value);setCreateForm(p=>({...p,classId:e.target.value}));}} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
             <option value="">เลือกห้องเรียน</option>
-            {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            {classes.map(c=><option key={c.id} value={c.id}>{c.name}{classes.filter(x=>x.name===c.name).length>1?` (รหัสห้อง ${c.id})`:""}</option>)}
           </select>
           {createForm.classId&&<div style={{border:`1.5px solid ${C.g200}`,borderRadius:10,overflow:"hidden"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"9px 10px",background:C.g50,borderBottom:`1px solid ${C.g100}`}}>
               <div style={{fontSize:12,fontWeight:800,color:C.navy}}>เลือกนักเรียน ({selectedStudentIds.length}/{invoiceStudents.length})</div>
-              <button type="button" onClick={()=>setSelectedStudentIds(selectedStudentIds.length===invoiceStudents.length?[]:invoiceStudents.map(s=>String(s.id)))} style={{border:"none",background:"transparent",color:C.navy,fontSize:12,fontWeight:800,cursor:"pointer"}}>
-                {selectedStudentIds.length===invoiceStudents.length?"ยกเลิกทั้งหมด":"เลือกทั้งหมด"}
+              <button type="button" disabled={invoiceStudentsLoading||!!invoiceStudentsError||!selectedStudentIds.length} onClick={()=>setSelectedStudentIds([])} style={{border:"none",background:"transparent",color:C.navy,fontSize:12,fontWeight:800,cursor:"pointer"}}>
+                ยกเลิกที่เลือก
               </button>
             </div>
+            <input aria-label="ค้นหานักเรียนผู้รับใบแจ้งยอด" value={invoiceStudentSearch} onChange={e=>setInvoiceStudentSearch(e.target.value)} placeholder="ค้นหาชื่อหรือเลขที่นักเรียน" style={{width:"100%",padding:10,border:"none",borderBottom:`1px solid ${C.g200}`,fontSize:14}}/>
             <div style={{maxHeight:230,overflowY:"auto",padding:"4px 10px"}}>
-              {invoiceStudents.length===0?<div style={{padding:12,textAlign:"center",fontSize:12,color:C.g400}}>ไม่พบนักเรียนในห้องนี้</div>:invoiceStudents.map((s,i)=>{
+              {invoiceStudentsLoading?<div role="status" style={{padding:12}}>กำลังโหลดรายชื่อนักเรียน...</div>:invoiceStudentsError?<div role="alert" style={{padding:12,color:C.red,fontSize:13}}>{invoiceStudentsError}<button type="button" onClick={()=>setInvoiceStudentReload(n=>n+1)} style={{display:"block",marginTop:8,padding:8}}>ลองใหม่</button></div>:invoiceStudents.length===0?<div style={{padding:12,textAlign:"center",fontSize:12,color:C.g400}}>ไม่พบนักเรียนในห้องนี้ กรุณาตรวจสอบห้องเรียนและสิทธิ์เข้าถึงข้อมูล</div>:visibleInvoiceStudents.length===0?<div style={{padding:12,fontSize:12,color:C.g400}}>ไม่พบชื่อที่ค้นหา</div>:visibleInvoiceStudents.map((s,i)=>{
                 const id=String(s.id),checked=selectedStudentIds.includes(id);
                 return <label key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 2px",borderBottom:i<invoiceStudents.length-1?`1px solid ${C.g100}`:"none",cursor:"pointer"}}>
                   <input type="checkbox" checked={checked} onChange={()=>setSelectedStudentIds(p=>checked?p.filter(x=>x!==id):[...p,id])} style={{width:18,height:18,accentColor:C.navy}}/>
@@ -2134,7 +2149,8 @@ function TuitionView({token,profile,student}){
             <input type="number" min="0" value={createForm.amount} onChange={e=>setCreateForm(p=>({...p,amount:e.target.value}))} placeholder="จำนวนเงิน" style={{minWidth:0,flex:1,padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>
             <input type="date" value={createForm.dueDate} onChange={e=>setCreateForm(p=>({...p,dueDate:e.target.value}))} style={{minWidth:0,flex:1,padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>
           </div>
-          <button onClick={createInvoices} disabled={busy==="create"||selectedStudentIds.length===0} style={{border:"none",background:busy==="create"||selectedStudentIds.length===0?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800,cursor:selectedStudentIds.length?"pointer":"not-allowed"}}>{busy==="create"?"กำลังสร้าง...":`สร้างใบแจ้งยอด (${selectedStudentIds.length} คน)`}</button>
+          <div style={{fontSize:13,color:C.navy,fontWeight:700}}>เลือก {selectedStudentIds.length} คน · รวม {money(Number(createForm.amount||0)*selectedStudentIds.length)} บาท</div>
+          <button onClick={createInvoices} disabled={busy==="create"||invoiceStudentsLoading||!!invoiceStudentsError||selectedStudentIds.length===0} style={{border:"none",background:busy==="create"||selectedStudentIds.length===0?C.g400:C.navy,color:C.white,borderRadius:10,padding:11,fontWeight:800,cursor:selectedStudentIds.length?"pointer":"not-allowed"}}>{busy==="create"?"กำลังสร้าง...":`สร้างใบแจ้งยอด (${selectedStudentIds.length} คน)`}</button>
         </div>
       </div>}
       {staffSection==="invoices"&&<div style={box}>
@@ -2548,6 +2564,96 @@ function ParentAssessmentView({token,profile,student}){
   </div>;
 }
 
+const SUPPLY_ITEMS=[
+  "เครื่องเหลาอโรม่าเหล็ก","กรรไกรขนาด 7 นิ้ว","กระดาษถ่ายแอลคอท A4 80แกรม","กระดาษสติ๊กเกอร์ A4 ขาวด้าน","กระดาษสติ๊กเกอร์ใส A4",
+  "คัตเตอร์เล็ก ตราช้าง","คัตเตอร์ใหญ่ พลาสติก ตราช้าง","ตาไก่ เจาะกระดาษ","เครื่องเย็บกระดาษ เบอร์ 10","เครื่องเย็บกระดาษ เบอร์ 35",
+  "ลวดเย็บกระดาษ เบอร์10","ลวดเย็บกระดาษ เบอร์35","ปากกาเคมีตราม้า สีดำ","ปากกาเคมีตราม้า สีน้ำเงิน","ไวท์บอร์ด Pilot สีดำ",
+  "ไวท์บอร์ด Pilot สีน้ำเงิน","ไวท์บอร์ด Pilot สีแดง","หมึกเติมปากกาไวท์บอร์ด Pilot สีน้ำเงิน","หมึกเติมปากกาไวท์บอร์ด Pilot สีแดง","แท่นประทับตรา สีน้ำเงิน เบอร์2",
+  "แท่นประทับตรา สีแดง เบอร์2","หมึกเติมแท่นประทับตรา สีน้ำเงิน","เยื้อกาวสองหน้า บาง ½ นิ้ว","เทปโฟมสองหน้าหนา 5เมตร","เทปใสLouis ขนาด½นิ้ว",
+  "เทปใสLouis ขนาด2 นิ้ว","เทปผ้า1.5นิ้ว","สติ๊กเกอร์ใสแผ่นใหญ่","กาว TOA ใหญ่ 32. ออนซ์","กาว UHU 8g.",
+  "ฟิวเจอร์บอร์ด 65x80 cm. สีเหลือง","ฟิวเจอร์บอร์ด 65x80 cm. สีฟ้า","ฟิวเจอร์บอร์ด 65x80 cm. สีแดง","ฟิวเจอร์บอร์ด 65x80 cm. สีชมพู","ฟิวเจอร์บอร์ด 65x80 cm. สีน้ำเงิน",
+  "ฟิวเจอร์บอร์ด 65x80 cm. สีเขียว","ฟิวเจอร์บอร์ด 65x80 cm. สีส้ม","ฟิวเจอร์บอร์ด 65x80 cm. สีดำ","กระดาษโปสเตอร์แข็ง สีเหลือง","กระดาษโปสเตอร์แข็ง สีฟ้า",
+  "กระดาษโปสเตอร์แข็ง สีชมพู","กระดาษโปสเตอร์แข็ง สีน้ำเงิน","กระดาษโปสเตอร์แข็ง สีเขียวอ่อน","กระดาษโปสเตอร์แข็ง สีเขียวแก่","กระดาษอ่อน สีเขียวสะท้อนแสง",
+  "กระดาษอ่อน สีชมพูสะท้อนแสง","กระดาษ A4 120 แกรม สีเหลือง","กระดาษลายหอม A4 สีฟ้า","กระดาษลายหอม A4 สีขาว","กระดาษลายหอม A4 สีครีม",
+  "กระดาษลายหอม A4 สีเหลือง","กระดาษสีขาว 150 แกรม","กระดาษโฟโต้ 120 แกรม (100แผ่น)","มุมบอร์ด เล็ก","เทปคิ้ว 5 มิลเลเซอร์ม้วนเล็ก สีแดง",
+  "เทปคิ้ว 5 มิลเลเซอร์ม้วนเล็ก สีเหลือง","เทปคิ้ว 5 มิลเลเซอร์ม้วนเล็ก สีน้ำเงิน","เทปคิ้ว 5 มิลเลเซอร์ม้วนเล็ก สีทอง","เทปคิ้ว 5 มิลเลเซอร์ม้วนเล็ก สีเขียว","พลาสติกเคลือบบัตร A4 (แบบถูก) 125ไมครอน",
+  "ดินสอดำ HB เรนโบว์รุ่นถูก","ดินสอ 2B สเตทเลอร์ลายไม้รุ่นถูก","ยางลบสเตทเลอร์50ก้อน","ไม้บรรทัด สติ๊กเกอร์","น้ำยาลบคำผิด elfen 3 มล.",
+  "สีไม้สั้น Master Arts 12สี","สีไม้ยาว Master Arts 12สี","แท่นตัดเทปใหญ่","สีน้ำโปสเตอร์ขวดใหญ่ (แบบถูก)","สีเทียน มาสเตอร์",
+  "สมุดวาดเขียนเมย์","ดินน้ำมันปอนด์ยากิยา","วงเวียน OSK No.33","ชุดเรขาใหญ่4ชิ้น","วาดเขียนเรนาซองซ์ A4",
+  "วาดเขียนเรนาซองซ์ A3","ปากกาน้ำเงิน Quantum Skate111","ปากกาแดง Quantum Skate111","ปากกาน้ำเงิน Quantum tier 0.5","แฟ้ม 2กระดุมออก้า No.B-154",
+  "แฟ้มสอด ออก้า 10 แผ่น","ปกใส A4 (แบบถูก)","สันรูด 5 mm. (คละสี)","ดับเบิ้ลคลิปเปอร์ เบอร์ 112","ดับเบิ้ลคลิปเปอร์ เบอร์ 110","ดับเบิ้ลคลิปเปอร์ เบอร์ 109"
+];
+function supplyCategory(name){
+  if(/กระดาษ|ฟิวเจอร์บอร์ด|สติ๊กเกอร์|วาดเขียน|สมุด|ปกใส|แฟ้ม|สันรูด|พลาสติก/.test(name))return "กระดาษ/แฟ้ม";
+  if(/ดินสอ|ปากกา|ไวท์บอร์ด|หมึก|ยางลบ|ไม้บรรทัด|สีไม้|สีเทียน|สีน้ำ|วงเวียน|เรขา|ลบคำผิด/.test(name))return "เครื่องเขียน/สี";
+  if(/กรรไกร|คัตเตอร์|เหลา|เย็บ|ลวดเย็บ|ตัดเทป|คลิป|ตาไก่/.test(name))return "อุปกรณ์สำนักงาน";
+  if(/เทป|กาว/.test(name))return "เทป/กาว";
+  return "อื่น ๆ";
+}
+function supplyIcon(cat){
+  return {"กระดาษ/แฟ้ม":"📄","เครื่องเขียน/สี":"✏️","อุปกรณ์สำนักงาน":"✂️","เทป/กาว":"🧴","อื่น ๆ":"📦"}[cat]||"📦";
+}
+function SupplyListPage(){
+  const cats=["ทั้งหมด","กระดาษ/แฟ้ม","เครื่องเขียน/สี","อุปกรณ์สำนักงาน","เทป/กาว","อื่น ๆ"];
+  const [q,setQ]=useState("");
+  const [cat,setCat]=useState("ทั้งหมด");
+  const [year,setYear]=useState(localStorage.getItem("supply_year")||"2569");
+  const [qty,setQty]=useState(()=>{try{return JSON.parse(localStorage.getItem("supply_qty")||"{}");}catch(e){return {};}});
+  const rows=SUPPLY_ITEMS.map((name,i)=>({id:i+1,name,cat:supplyCategory(name)}))
+    .filter(x=>(cat==="ทั้งหมด"||x.cat===cat)&&(!q||x.name.toLowerCase().includes(q.toLowerCase())));
+  const picked=SUPPLY_ITEMS.map((name,i)=>({id:i+1,name,cat:supplyCategory(name),qty:qty[i+1]||""})).filter(x=>String(x.qty).trim());
+  function setItemQty(id,value){
+    const next={...qty,[id]:value};
+    if(!String(value).trim())delete next[id];
+    setQty(next);localStorage.setItem("supply_qty",JSON.stringify(next));
+  }
+  function clearQty(){if(confirm("ล้างจำนวนที่กรอกไว้ทั้งหมด?")){setQty({});localStorage.removeItem("supply_qty");}}
+  function changeYear(v){setYear(v);localStorage.setItem("supply_year",v);}
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{background:C.white,borderRadius:18,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:900,color:C.navy}}>📦 รายการของ</div>
+            <div style={{fontSize:12,color:C.g500,marginTop:3}}>จากไฟล์รายการสั่งยงเจริญ (แครอท) ใช้ค้นหาและกรอกจำนวนก่อนสั่ง/เบิก</div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>window.print()} style={{border:"none",borderRadius:10,padding:"9px 12px",background:C.g100,color:C.navy,fontWeight:800}}>🖨️ พิมพ์</button>
+            <button onClick={()=>window.open("http://localhost:8090/","_blank","noopener,noreferrer")} style={{border:"none",borderRadius:10,padding:"9px 12px",background:C.navy,color:C.white,fontWeight:800}}>เปิดคลังสินค้า</button>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 120px",gap:10,marginTop:14}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหารายการของ..." style={{border:`1.5px solid ${C.g200}`,borderRadius:12,padding:"11px 12px",fontSize:14}}/>
+          <input value={year} onChange={e=>changeYear(e.target.value)} placeholder="ปี" style={{border:`1.5px solid ${C.g200}`,borderRadius:12,padding:"11px 12px",fontSize:14,fontWeight:800,color:C.navy}}/>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+          {cats.map(c=><button key={c} onClick={()=>setCat(c)} style={{border:`1.5px solid ${cat===c?C.navy:C.g200}`,background:cat===c?C.navy:C.white,color:cat===c?C.white:C.navy,borderRadius:999,padding:"8px 12px",fontWeight:800}}>{c}</button>)}
+        </div>
+      </div>
+      <div style={{background:C.white,borderRadius:18,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:10}}>
+          <div style={{fontWeight:900,color:C.navy}}>รายการทั้งหมด {rows.length} รายการ</div>
+          <button onClick={clearQty} style={{border:"none",borderRadius:10,padding:"7px 10px",background:C.redL,color:C.red,fontWeight:800}}>ล้างจำนวน</button>
+        </div>
+        <div style={{display:"grid",gap:10}}>
+          {rows.map(x=><div key={x.id} style={{display:"grid",gridTemplateColumns:"44px 1fr 78px",gap:10,alignItems:"center",border:`1px solid ${C.g100}`,borderRadius:14,padding:10}}>
+            <div style={{width:38,height:38,borderRadius:12,background:C.goldP,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{supplyIcon(x.cat)}</div>
+            <div><div style={{fontWeight:800,color:C.navy,lineHeight:1.35}}>{x.name}</div><div style={{fontSize:11,color:C.g500,marginTop:2}}>{x.cat}</div></div>
+            <input value={qty[x.id]||""} onChange={e=>setItemQty(x.id,e.target.value)} placeholder="จำนวน" inputMode="numeric" style={{border:`1.5px solid ${C.g200}`,borderRadius:10,padding:"9px 8px",fontWeight:800,textAlign:"center"}}/>
+          </div>)}
+        </div>
+      </div>
+      {picked.length>0&&<div style={{background:C.white,borderRadius:18,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+        <div style={{fontWeight:900,color:C.navy,marginBottom:10}}>สรุปรายการที่กรอก ปี {year} ({picked.length} รายการ)</div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><th style={{textAlign:"left",padding:8,borderBottom:`1px solid ${C.g100}`}}>ลำดับ</th><th style={{textAlign:"left",padding:8,borderBottom:`1px solid ${C.g100}`}}>รายการ</th><th style={{textAlign:"right",padding:8,borderBottom:`1px solid ${C.g100}`}}>จำนวน</th></tr></thead>
+          <tbody>{picked.map((x,i)=><tr key={x.id}><td style={{padding:8,borderBottom:`1px solid ${C.g100}`}}>{i+1}</td><td style={{padding:8,borderBottom:`1px solid ${C.g100}`,fontWeight:700,color:C.navy}}>{x.name}</td><td style={{padding:8,borderBottom:`1px solid ${C.g100}`,textAlign:"right",fontWeight:900}}>{x.qty}</td></tr>)}</tbody>
+        </table></div>
+      </div>}
+    </div>
+  );
+}
+
 // ======= TEACHER HOME =======
 function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
@@ -2607,7 +2713,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
   if(role==="admin")menus.push({id:"pos",icon:"💵",label:tx("POS เก็บเงิน","POS"),bg:"linear-gradient(135deg,#7c2d12,#ea580c)",action:()=>window.open("http://localhost:8088/","_blank","noopener,noreferrer")});
-  if(role==="admin")menus.push({id:"warehouse",icon:"📦",label:tx("คลังสินค้า","Warehouse"),bg:"linear-gradient(135deg,#0f766e,#14b8a6)",action:()=>window.open("http://localhost:8090/","_blank","noopener,noreferrer")});
+  if(role==="admin")menus.push({id:"warehouse",icon:"📦",label:tx("คลังสินค้า","Warehouse"),bg:"linear-gradient(135deg,#0f766e,#14b8a6)",action:()=>setPage("supply-list")});
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
   return(
@@ -3040,6 +3146,7 @@ function App(){
       if(subPage==="parent-usage"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><ParentUsageReport token={token}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
+      if(subPage==="supply-list"&&role==="admin")return <div><Back/><SupplyListPage/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
     }
