@@ -2119,6 +2119,9 @@ function TuitionView({token,profile,student}){
     if(!invoice||!form.file||Number(form.amount)<=0){setError("กรุณาเลือกใบแจ้งยอด ระบุจำนวนเงิน และแนบสลิป");return;}
     if(!form.file.type.startsWith("image/")){setError("กรุณาแนบสลิปเป็นไฟล์รูปภาพ");return;}
     if(form.file.size>5*1024*1024){setError("ไฟล์สลิปต้องมีขนาดไม่เกิน 5 MB");return;}
+    const requestedItems=validatedAllocations(form.amounts||{},form.amount);
+    if(!requestedItems)return;
+    if(Number(form.amount)>Math.max(0,Number(invoice.total_amount)-Number(invoice.paid_amount))){setError("ยอดชำระเกินยอดคงเหลือปัจจุบัน");return;}
     setBusy("submit");setError("");
     try{
       const ext=(form.file.name.split(".").pop()||"jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase();
@@ -2126,7 +2129,7 @@ function TuitionView({token,profile,student}){
       await uploadPaymentSlip(form.file,path,token);
       const created=await sbFetch("payments",{method:"POST",token,body:JSON.stringify({
         invoice_id:invoice.id,parent_id:profile.id,amount:Number(form.amount),
-        method:"bank_transfer",paid_at:new Date().toISOString(),slip_path:path,status:"pending"
+        method:"bank_transfer",paid_at:new Date().toISOString(),slip_path:path,status:"pending",requested_item_allocations:requestedItems
       })});
       const payment=created?.[0];
       if(payment){
@@ -2146,7 +2149,7 @@ function TuitionView({token,profile,student}){
     catch(e){setError(e.message);}
   }
   async function review(payment,status){
-    const allocations=status==="approved"?validatedAllocations(reviewAllocations[payment.id]||{},payment.amount):null;
+    const allocations=status==="approved"?validatedAllocations(reviewAllocations[payment.id]||requestedAmounts(payment),payment.amount):null;
     if(status==="approved"&&!allocations)return;
     const note=status==="rejected"?prompt("ระบุเหตุผลที่ไม่อนุมัติ เพื่อแจ้งผู้ปกครอง"):"";
     if(status==="rejected"&&(note===null||!note.trim()))return;
@@ -2276,7 +2279,9 @@ function TuitionView({token,profile,student}){
     </label>)}
     <div style={{fontSize:12,marginTop:8}}>รวมระบุ ฿{money(Object.values(amounts).reduce((n,v)=>n+(Number(v)||0),0))}</div>
   </fieldset>;
-  const reviewItemInputs=p=>paymentItemInputs(p.invoice_id,reviewAllocations[p.id]||{},amounts=>setReviewAllocations(v=>({...v,[p.id]:amounts})));
+  function requestedAmounts(p){return Object.fromEntries((p.requested_item_allocations||[]).map(r=>[r.item_id,String(r.amount)]));}
+  const requestedPaymentInfo=p=>p.requested_item_allocations?.length?<div style={{marginTop:8,fontSize:12,lineHeight:1.8,color:C.g600}}><b>รายการที่แจ้งชำระ</b>{p.requested_item_allocations.map(r=><div key={r.item_id}>{itemBalances.find(i=>String(i.item_id)===String(r.item_id))?.description||"รายการ"} · ฿{money(r.amount)}</div>)}</div>:null;
+  const reviewItemInputs=p=><div style={{marginTop:8}}>{requestedPaymentInfo(p)}{paymentItemInputs(p.invoice_id,reviewAllocations[p.id]||requestedAmounts(p),amounts=>setReviewAllocations(v=>({...v,[p.id]:amounts})))}</div>;
   const cashControls=inv=>{
     if(["paid","cancelled","draft"].includes(inv.status))return null;
     const pending=payments.some(p=>p.invoice_id===inv.id&&p.status==="pending");
@@ -2579,11 +2584,14 @@ function TuitionView({token,profile,student}){
           </div>
           <div style={{marginTop:12,borderTop:`1px solid ${C.g100}`,paddingTop:8}}>
             {invoiceItems(inv)}
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:16,paddingTop:8,marginTop:5,borderTop:`1px solid ${C.g200}`,color:C.navy}}><b>ยอดรวม</b><b>฿{money(inv.total_amount)}</b></div>
-            {invoiceBalance(inv)}
+            <div style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:16,paddingTop:8,marginTop:5,borderTop:`1px solid ${C.g200}`,color:C.navy}}><b style={{fontSize:13}}>ยอดคงเหลือปัจจุบัน</b><b style={{whiteSpace:"nowrap"}}>฿{money(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount)))}</b></div>
+            <div style={{fontSize:12,color:C.g600,lineHeight:1.8,marginTop:6}}>ยอดเรียกเก็บเดิม ฿{money(inv.total_amount)}<br/>ชำระแล้ว (ตรวจสอบแล้ว) ฿{money(inv.paid_amount)}</div>
           </div>
           {invPayments.map(p=>{const receipt=receipts.find(r=>r.payment_id===p.id);return <div key={p.id} style={{marginTop:10,background:C.g50,borderRadius:10,padding:10,fontSize:12}}>
             <div style={{display:"flex",justifyContent:"space-between"}}><span>แจ้งชำระ ฿{money(p.amount)}</span>{badge(p.status)}</div>
+            <div style={{color:C.g600,marginTop:5}}>วันที่แจ้งชำระ {formatThaiDateTime(p.paid_at)} · {p.method==="cash"?"เงินสด":"โอนเงิน"}</div>
+            {requestedPaymentInfo(p)}
+            {p.reviewed_at&&<div style={{color:C.g600}}>ตรวจสอบเมื่อ {formatThaiDateTime(p.reviewed_at)}</div>}
             {cashInfo(p)}
             {paymentAllocationInfo(p)}
             {receiptImageButton(p)}
@@ -2595,7 +2603,9 @@ function TuitionView({token,profile,student}){
       })}
       {form.invoiceId&&<div style={box}>
         <div style={{fontWeight:800,color:C.navy,marginBottom:10}}>แนบหลักฐานการชำระ</div>
-        <input type="number" min="0" step="0.01" value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="จำนวนเงิน" style={{width:"100%",padding:11,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,marginBottom:9}}/>
+        <input aria-label="ยอดโอนผู้ปกครอง" type="number" min="0.01" step="0.01" disabled={!!busy} value={form.amount} onChange={e=>setForm(p=>({...p,amount:e.target.value}))} placeholder="จำนวนเงิน" style={{width:"100%",padding:11,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,marginBottom:9}}/>
+        {paymentItemInputs(form.invoiceId,form.amounts||{},amounts=>setForm(p=>({...p,amounts})))}
+        <div style={{fontSize:12,color:C.g600,margin:"8px 0"}}>รอตรวจสอบหลักฐานก่อนปรับยอดชำระ</div>
         <input type="file" accept="image/*" onChange={e=>setForm(p=>({...p,file:e.target.files?.[0]||null}))} style={{width:"100%",padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:13,marginBottom:9}}/>
         <div style={{fontSize:11,color:C.g400,marginBottom:10}}>รองรับไฟล์รูปภาพ ขนาดไม่เกิน 5 MB</div>
         <div style={{display:"flex",gap:8}}>
