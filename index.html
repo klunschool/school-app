@@ -1320,6 +1320,7 @@ function formatTuitionMessage(body){
 }
 function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null}){
   const [students,setStudents]=useState([]);
+  const [talkClass,setTalkClass]=useState("all");
   const [selected,setSelected]=useState(student||null);
   const [unreadByStudent,setUnreadByStudent]=useState({});
   const [messages,setMessages]=useState([]);
@@ -1431,7 +1432,11 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
   },[messages,tuitionMessages,loading,selected?.id]);
   if(loading)return <Spin/>;
   const studentLabel=s=>`${s.full_name||"-"}${s.classes?.name?` · ${s.classes.name}`:""}${s.student_no?` · เลขที่ ${s.student_no}`:""}`;
-  const unreadStudents=students.filter(s=>unreadByStudent[s.id]?.count>0);
+  const classKey=s=>s.class_id==null?"unassigned":String(s.class_id);
+  const talkClasses=Array.from(new Map(students.map(s=>[classKey(s),{id:classKey(s),name:s.classes?.name||"ยังไม่ระบุห้อง"}])).values())
+    .sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||a.name.localeCompare(b.name,"th")||a.id.localeCompare(b.id));
+  const visibleStudents=role==="admin"&&talkClass!=="all"?students.filter(s=>classKey(s)===talkClass):students;
+  const unreadStudents=visibleStudents.filter(s=>unreadByStudent[s.id]?.count>0);
   const conversation=[...messages,...tuitionMessages.map(m=>({...m,isTuition:true}))]
     .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   return(
@@ -1439,6 +1444,17 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💬 พูดคุย / ติดต่อครู</div>
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>ใช้สำหรับเรื่องการเรียน การมาเรียน งานโรงเรียน และเรื่องจำเป็นของนักเรียน</div>
+        {role==="admin"&&<label style={{display:"block",fontSize:12,color:C.navy,fontWeight:700,marginTop:12}}>ห้องเรียน
+          <select aria-label="ห้องเรียนในบทสนทนา" value={talkClass} onChange={e=>{
+            const id=e.target.value;setTalkClass(id);
+            const next=id==="all"?students:students.filter(s=>classKey(s)===id);
+            const target=next.find(s=>s.id===selected?.id)||next[0]||null;
+            if(target?.id!==selected?.id){followLatestRef.current=true;setMessages([]);setTuitionMessages([]);setBody("");setSelected(target);}
+          }} style={{width:"100%",marginTop:4,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
+            <option value="all">ทุกห้องเรียน</option>
+            {talkClasses.map(c=><option key={c.id} value={c.id}>{c.name}{talkClasses.filter(x=>x.name===c.name).length>1?` (รหัสห้อง ${c.id})`:""} · {students.filter(s=>classKey(s)===c.id).length} คน</option>)}
+          </select>
+        </label>}
         {isStaff&&unreadStudents.length>0&&<div style={{marginTop:12,background:C.redL,border:`1px solid ${C.red}`,borderRadius:12,padding:10}}>
           <div style={{fontSize:12,fontWeight:900,color:C.red,marginBottom:7}}>ข้อความใหม่จากผู้ปกครอง</div>
           {unreadStudents.slice(0,5).map(s=><button key={s.id} onClick={()=>setSelected(s)} style={{width:"100%",border:"none",background:C.white,borderRadius:9,padding:"8px 10px",marginTop:6,textAlign:"left",cursor:"pointer"}}>
@@ -1451,7 +1467,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
         </div>}
         {isStaff&&<select aria-label="นักเรียนในบทสนทนา" value={selected?.id||""} onChange={e=>{followLatestRef.current=true;setMessages([]);setTuitionMessages([]);setSelected(students.find(s=>String(s.id)===e.target.value)||null);}} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
           <option value="">เลือกนักเรียน</option>
-          {students.map(s=><option key={s.id} value={s.id}>{unreadByStudent[s.id]?.count?`🔴 ${unreadByStudent[s.id].count} ใหม่ - `:""}{studentLabel(s)}</option>)}
+          {visibleStudents.map(s=><option key={s.id} value={s.id}>{unreadByStudent[s.id]?.count?`🔴 ${unreadByStudent[s.id].count} ใหม่ - `:""}{studentLabel(s)}</option>)}
         </select>}
         {!isStaff&&selected&&<div style={{marginTop:12,background:C.g50,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:800,color:C.navy}}>👧 {studentLabel(selected)}</div>}
       </div>
