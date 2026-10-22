@@ -1326,6 +1326,8 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
   const [body,setBody]=useState("");
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
+  const messageScrollRef=useRef(null);
+  const followLatestRef=useRef(true);
   const isStaff=["teacher","teacher_parent","admin"].includes(role);
   const [tuitionMessages,setTuitionMessages]=useState([]);
   const [tuitionMessageError,setTuitionMessageError]=useState("");
@@ -1372,6 +1374,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
   useEffect(()=>{
     let active=true;
     setTuitionMessages([]);setTuitionMessageError("");
+    setMessages([]);followLatestRef.current=true;
     if(!selected?.id){setMessages([]);return;}
     const loadTuitionMessages=async()=>{
       if(!canReadTuition)return;
@@ -1417,10 +1420,15 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
       await sbFetch("parent_teacher_messages",{method:"POST",token,body:JSON.stringify(payload)});
       setBody("");
       const rows=await sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&select=*&order=created_at.asc`,{token});
+      followLatestRef.current=true;
       setMessages(rows||[]);
     }catch(e){alert(e.message);}
     finally{setSending(false);}
   }
+  React.useLayoutEffect(()=>{
+    const panel=messageScrollRef.current;
+    if(panel&&followLatestRef.current)panel.scrollTop=panel.scrollHeight;
+  },[messages,tuitionMessages,loading,selected?.id]);
   if(loading)return <Spin/>;
   const studentLabel=s=>`${s.full_name||"-"}${s.classes?.name?` · ${s.classes.name}`:""}${s.student_no?` · เลขที่ ${s.student_no}`:""}`;
   const unreadStudents=students.filter(s=>unreadByStudent[s.id]?.count>0);
@@ -1449,7 +1457,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
       </div>
       {selected?<div style={{background:C.white,borderRadius:16,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         {tuitionMessageError&&<div role="alert" style={{color:C.red,fontSize:12,padding:8,overflowWrap:"anywhere"}}>{tuitionMessageError}</div>}
-        <div style={{minHeight:220,maxHeight:430,overflowY:"auto",paddingRight:2}}>
+        <div ref={messageScrollRef} aria-label="ข้อความสนทนา" onScroll={e=>{const panel=e.currentTarget;followLatestRef.current=panel.scrollHeight-panel.clientHeight-panel.scrollTop<48;}} style={{minHeight:220,maxHeight:430,overflowY:"auto",overflowAnchor:"none",paddingRight:2}}>
           {conversation.length===0?<Empty icon="💬" msg="ยังไม่มีข้อความ เริ่มสนทนาได้เลย"/>:conversation.map(m=>{
             const mine=!m.isTuition&&m.sender_id===profile.id;
             return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
