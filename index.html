@@ -2203,7 +2203,7 @@ function TuitionView({token,profile,student}){
         p_invoice_id:addItemForm.invoiceId,p_description:addItemForm.description.trim(),p_amount:amount,
         p_request_id:addItemForm.requestId,p_reason:addItemForm.reason.trim()
       })});
-      setAddItemForm(null);setAddItemMessage(`เพิ่มรายการแล้ว · ยอดรวม ฿${money(result.new_total)} · คงเหลือ ฿${money(result.remaining_amount)}`);
+      setAddItemForm(null);setAddItemMessage(`เพิ่มรายการใหม่แล้ว · ${addItemForm.description.trim()} · ฿${money(addItemForm.amount)}`);
       await load();
     }catch(e){setError(e.message);}
     finally{setBusy("");}
