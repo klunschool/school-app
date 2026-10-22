@@ -1449,7 +1449,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
             {unreadByStudent[s.id].lastBody&&<div style={{fontSize:12,color:C.g600,marginTop:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{unreadByStudent[s.id].lastBody}</div>}
           </button>)}
         </div>}
-        {isStaff&&<select value={selected?.id||""} onChange={e=>setSelected(students.find(s=>String(s.id)===e.target.value)||null)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
+        {isStaff&&<select aria-label="นักเรียนในบทสนทนา" value={selected?.id||""} onChange={e=>{followLatestRef.current=true;setMessages([]);setTuitionMessages([]);setSelected(students.find(s=>String(s.id)===e.target.value)||null);}} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white}}>
           <option value="">เลือกนักเรียน</option>
           {students.map(s=><option key={s.id} value={s.id}>{unreadByStudent[s.id]?.count?`🔴 ${unreadByStudent[s.id].count} ใหม่ - `:""}{studentLabel(s)}</option>)}
         </select>}
