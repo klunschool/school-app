@@ -3479,6 +3479,13 @@ function App(){
   const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
   const hasDualRole=rawRole==="teacher_parent";
   const isDirector=String(session?.user?.email||"").toLowerCase()==="director@klunschool.com";
+  const scanOnly=profile?.role==="scanner"||String(session?.user?.email||"").toLowerCase()==="scan.appklunschool@gmail.com";
+  if(scanOnly)return <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",padding:20,background:C.bg}}>
+    <div style={{fontSize:20,fontWeight:800,color:C.navy,marginBottom:16}}>ระบบสแกนทั้งโรงเรียน</div>
+    <div style={{fontSize:14,color:C.g600,marginBottom:24}}>{profile.full_name||"เจ้าหน้าที่สแกน"}</div>
+    <a href="./scanner.html" style={{display:"block",textAlign:"center",padding:16,borderRadius:8,background:C.navy,color:C.white,fontWeight:800,textDecoration:"none"}}>สแกนเข้า–ออก</a>
+    <button onClick={onLogout} style={{marginTop:16,width:"100%",padding:12,border:`1px solid ${C.g200}`,borderRadius:8,color:C.red,background:C.white}}>ออกจากระบบ</button>
+  </div>;
 
   // Bottom tabs
   const tabs=["teacher","finance","admin"].includes(role)
