@@ -1025,15 +1025,23 @@ function StudentSchedule({token,studentId}){
   useEffect(()=>{
     let active=true;
     setLoading(true);setError("");
-    sbFetch("rpc/get_student_timetable",{
+    let pending=false;
+    const refresh=()=>{
+    if(pending)return;
+    pending=true;
+    return sbFetch("rpc/get_student_timetable",{
       method:"POST",
       token,
       body:JSON.stringify({p_student_id:Number(studentId)})
     })
-      .then(rows=>{if(active)setItems(rows||[]);})
+      .then(rows=>{if(active){setItems(rows||[]);setError("");}})
       .catch(e=>{if(active)setError(e.message||tx("โหลดตารางสอนไม่สำเร็จ","Could not load timetable"));})
-      .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false;};
+      .finally(()=>{pending=false;if(active)setLoading(false);});
+    };
+    refresh();
+    const timer=setInterval(refresh,30000);
+    window.addEventListener("focus",refresh);
+    return()=>{active=false;clearInterval(timer);window.removeEventListener("focus",refresh);};
   },[token,studentId]);
   if(loading)return <Spin/>;
   return(

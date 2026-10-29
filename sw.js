@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v83-private-teacher-timetables";
+const CACHE = "school-app-github-v84-auto-homeroom-timetables";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
