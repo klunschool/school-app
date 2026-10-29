@@ -195,9 +195,6 @@ async function uploadAnnouncementImage(file,path,token){
   if(!res.ok)throw new Error(d.message||tx("อัปโหลดรูปประกาศไม่สำเร็จ","Could not upload announcement image"));
   return d;
 }
-function teacherSchedulePublicUrl(path){
-  return path?`${SUPABASE_URL}/storage/v1/object/public/teacher-schedules/${path}`:"";
-}
 function storageObjectPath(path){
   return String(path||"").split("/").map(encodeURIComponent).join("/");
 }
@@ -953,6 +950,20 @@ function AttendCheck({token,profile}){
 }
 
 // ======= TEACHER TIMETABLE =======
+async function getPrivateTimetableUrl(path,token){
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/teacher-schedules/${storageObjectPath(path)}`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({expiresIn:300})});
+  const data=await res.json();if(!res.ok)throw new Error(data.message||"ไม่มีสิทธิ์เปิดตารางสอน");
+  const signed=data.signedURL||data.signedUrl;if(!signed)throw new Error("ไม่พบลิงก์ตารางสอน");
+  return signed.startsWith("http")?signed:`${SUPABASE_URL}/storage/v1${signed}`;
+}
+function PrivateTimetableImage({path,token,version}){
+  const [url,setUrl]=useState("");const [error,setError]=useState("");
+  useEffect(()=>{let active=true;setUrl("");setError("");
+    const refresh=()=>getPrivateTimetableUrl(path,token).then(u=>{if(active){setUrl(u);setError("");}}).catch(e=>{if(active){setUrl("");setError(e.message);}});
+    refresh();const timer=setInterval(refresh,240000);return()=>{active=false;clearInterval(timer);};
+  },[path,token,version]);
+  return error?<div role="alert" style={{color:C.red,fontSize:12}}>{error}</div>:url?<img src={url} alt="รูปตารางสอน" style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>:<Spin/>;
+}
 function TeacherSchedule({token,profile}){
   const [row,setRow]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -976,7 +987,7 @@ function TeacherSchedule({token,profile}){
     setBusy(true);setError("");
     try{
       const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
-      const path=`${profile.id}/schedule.${ext}`;
+      const path=`${profile.id}/schedule-${crypto.randomUUID()}.${ext}`;
       await uploadTeacherSchedule(file,path,token);
       await sbFetch("teacher_schedules",{
         method:"POST",
@@ -989,7 +1000,6 @@ function TeacherSchedule({token,profile}){
     finally{setBusy(false);}
   }
   if(loading)return <Spin/>;
-  const imageUrl=row?.image_path?`${teacherSchedulePublicUrl(row.image_path)}?v=${encodeURIComponent(row.updated_at||"")}`:"";
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
@@ -1002,7 +1012,7 @@ function TeacherSchedule({token,profile}){
       </div>
       {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {error}</div>}
       <div style={{background:C.white,borderRadius:16,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
-        {imageUrl?<img src={imageUrl} alt={tx("รูปตารางสอน","Timetable")} style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>:<Empty icon="🗓️" msg={tx("ยังไม่มีรูปตารางสอน","No timetable image yet")}/>}
+        {row?.image_path?<PrivateTimetableImage path={row.image_path} version={row.updated_at} token={token}/>:<Empty icon="🗓️" msg={tx("ยังไม่มีรูปตารางสอน","No timetable image yet")}/>}
       </div>
     </div>
   );
@@ -1030,22 +1040,58 @@ function StudentSchedule({token,studentId}){
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:17,fontWeight:800,color:C.navy}}>🗓️ {tx("ตารางสอน","Teaching timetable")}</div>
-        <div style={{fontSize:12,color:C.g400,marginTop:3}}>{tx("ตารางสอนประจำห้องเรียนของบุตรหลาน","Your child's classroom timetable")}</div>
+        <div style={{fontSize:12,color:C.g400,marginTop:3}}>{tx("ตารางสอนที่โรงเรียนเผยแพร่ให้ห้องเรียน","Timetables published for your classroom")}</div>
       </div>
       {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:10,padding:11,fontSize:13,fontWeight:700}}>⚠️ {error}</div>}
       {items.length===0
-        ?<div style={{background:C.white,borderRadius:16}}><Empty icon="🗓️" msg={tx("คุณครูยังไม่ได้อัปโหลดตารางสอน","The teacher has not uploaded a timetable yet")}/></div>
+        ?<div style={{background:C.white,borderRadius:16}}><Empty icon="🗓️" msg={tx("ยังไม่มีตารางสอนที่เผยแพร่ให้ห้องนี้","No timetable published for this class")}/></div>
         :items.map((row,i)=>{
-          const imageUrl=`${teacherSchedulePublicUrl(row.image_path)}?v=${encodeURIComponent(row.updated_at||"")}`;
           return <div key={`${row.image_path}-${i}`} style={{background:C.white,borderRadius:16,padding:12,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
             {row.teacher_name&&<div style={{fontSize:12,color:C.g600,fontWeight:700,margin:"2px 2px 10px"}}>{tx("อัปโหลดโดย","Uploaded by")} {row.teacher_name}</div>}
-            <img src={imageUrl} alt={tx("รูปตารางสอน","Timetable")} style={{display:"block",width:"100%",height:"auto",borderRadius:8}}/>
+            <PrivateTimetableImage path={row.image_path} version={row.updated_at} token={token}/>
           </div>;
         })}
     </div>
   );
 }
 
+function AdminTimetables({token}){
+  const [rows,setRows]=useState([]),[classes,setClasses]=useState([]),[selected,setSelected]=useState({});
+  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(""),[error,setError]=useState(""),[message,setMessage]=useState("");
+  const load=useCallback(async()=>{
+    setLoading(true);try{
+      const [s,c,p]=await Promise.all([sbFetch("teacher_schedules?select=*,profiles(full_name)&order=updated_at.desc",{token}),sbFetch("classes?select=id,name&order=id.asc",{token}),sbFetch("teacher_schedule_publications?select=*",{token})]);
+      setRows(s||[]);setClasses(c||[]);setSelected(Object.fromEntries((s||[]).map(r=>[r.teacher_id,(p||[]).filter(x=>x.teacher_id===r.teacher_id&&x.image_path===r.image_path).map(x=>Number(x.class_id))])));
+    }catch(e){setError(e.message);}finally{setLoading(false);}
+  },[token]);
+  useEffect(()=>{load();},[load]);
+  async function save(row){setBusy(row.teacher_id);setError("");setMessage("");try{
+    const count=await sbFetch("rpc/set_teacher_schedule_publications",{method:"POST",token,body:JSON.stringify({p_teacher_id:row.teacher_id,p_image_path:row.image_path,p_class_ids:selected[row.teacher_id]||[]})});
+    setMessage(`บันทึกการเผยแพร่แล้ว ${count} ห้อง`);await load();
+  }catch(e){setError(e.message);}finally{setBusy("");}}
+  if(loading)return <Spin/>;
+  return <div style={{display:"grid",gap:12}}><h2 style={{fontSize:17,color:C.navy,margin:0}}>จัดการตารางสอน</h2>
+    {error&&<div role="alert" style={{color:C.red,fontSize:13}}>{error}</div>}{message&&<div role="status" style={{color:C.green,fontSize:13}}>{message}</div>}
+    {!rows.length&&<Empty icon="🗓️" msg="ยังไม่มีตารางสอน"/>}
+    {rows.map(row=><div key={row.teacher_id} style={{padding:14,background:C.white,borderRadius:8}}>
+      <div style={{fontWeight:800,color:C.navy,marginBottom:10}}>{row.profiles?.full_name||"ครูผู้สอน"}</div>
+      <PrivateTimetableImage path={row.image_path} version={row.updated_at} token={token}/>
+      <details style={{marginTop:12}}><summary style={{fontSize:13,fontWeight:700,cursor:"pointer"}}>เผยแพร่ให้ห้องเรียน ({(selected[row.teacher_id]||[]).length})</summary>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,marginTop:10}}>{classes.map(c=><label key={c.id} style={{fontSize:12,display:"flex",gap:6,alignItems:"center"}}>
+          <input type="checkbox" disabled={!!busy} checked={(selected[row.teacher_id]||[]).includes(Number(c.id))} onChange={e=>setSelected(v=>({...v,[row.teacher_id]:e.target.checked?[...(v[row.teacher_id]||[]),Number(c.id)]:(v[row.teacher_id]||[]).filter(id=>id!==Number(c.id))}))}/>
+          {c.name}{classes.filter(x=>x.name===c.name).length>1?` (${c.id})`:""}
+        </label>)}</div>
+      </details>
+      <button disabled={!!busy} onClick={()=>save(row)} style={{marginTop:12,width:"100%",padding:10,border:0,borderRadius:8,background:C.navy,color:C.white,fontWeight:700}}>{busy===row.teacher_id?"กำลังบันทึก...":"บันทึกการเผยแพร่"}</button>
+    </div>)}
+  </div>;
+}
+function OwnStudentTimetable({token,profile}){
+  const [id,setId]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
+  useEffect(()=>{let active=true;sbFetch(`students?profile_id=eq.${profile.id}&select=id&limit=1`,{token}).then(r=>{if(active)setId(r?.[0]?.id||null);}).catch(e=>{if(active)setError(e.message);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[token,profile.id]);
+  if(loading)return <Spin/>;if(error)return <div role="alert">{error}</div>;
+  return id?<StudentSchedule token={token} studentId={id}/>:<Empty icon="🗓️" msg="ไม่พบข้อมูลนักเรียนที่ผูกกับบัญชี"/>;
+}
 // ======= GRADES =======
 function Grades({token,isTeacher}){
   const [grades,setGrades]=useState([]);const [students,setStudents]=useState([]);const [loading,setLoading]=useState(true);
@@ -2682,7 +2728,7 @@ function StudentHome({token,profile,studentId,studentInfo,onPageChange}){
   const menus=[
     {id:"att",icon:"📅",label:tx("การมาเรียน","Attendance"),bg:"linear-gradient(135deg,#16a34a,#22c55e)",action:()=>onPageChange("attend")},
     {id:"hist",icon:"🕐",label:tx("ประวัติสแกน","Scan history"),bg:"linear-gradient(135deg,#0f766e,#0d9488)",action:()=>onPageChange("checkin")},
-    ...(isParent?[{id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#2563eb,#3b82f6)",action:()=>onPageChange("schedule")}]:[]),
+    {id:"schedule",icon:"🗓️",label:tx("ตารางสอน","Timetable"),bg:"linear-gradient(135deg,#2563eb,#3b82f6)",action:()=>onPageChange("schedule")},
     {id:"grade",icon:"📊",label:tx("ผลการเรียน","Grades"),bg:"linear-gradient(135deg,#7c3aed,#8b5cf6)",action:()=>onPageChange("grades")},
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>onPageChange("announce")},
     ...(isParent?[{id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>onPageChange("talk")}]:[]),
@@ -3074,6 +3120,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
   if(role==="admin")menus.push({id:"pos",icon:"💵",label:tx("POS เก็บเงิน","POS"),bg:"linear-gradient(135deg,#7c2d12,#ea580c)",action:()=>window.open("http://localhost:8088/","_blank","noopener,noreferrer")});
   if(role==="admin")menus.push({id:"warehouse",icon:"📦",label:tx("คลังสินค้า","Warehouse"),bg:"linear-gradient(135deg,#0f766e,#14b8a6)",action:()=>setPage("supply-list")});
+  if(role==="admin")menus.push({id:"timetable-admin",icon:"🗓️",label:tx("ตารางสอน","Timetables"),bg:C.navy,action:()=>setPage("timetable-admin")});
   if(role==="teacher"||role==="teacher_parent")menus=menus.filter(item=>item.id!=="assessment");
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
@@ -3505,6 +3552,8 @@ function App(){
       if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role} email={session?.user?.email}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="schedule"&&role==="teacher")return <div><Back/><TeacherSchedule token={token} profile={profile}/></div>;
+      if(subPage==="schedule"&&role==="student")return <div><Back/><OwnStudentTimetable token={token} profile={profile}/></div>;
+      if(subPage==="timetable-admin"&&role==="admin")return <div><Back/><AdminTimetables token={token}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
