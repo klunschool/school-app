@@ -3100,6 +3100,47 @@ function SupplyListPage(){
 }
 
 // ======= TEACHER HOME =======
+function AdminStorageUsage({token,compact=false,onOpen}){
+  const [data,setData]=useState(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[revision,setRevision]=useState(0);
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);setError("");
+    sbFetch("rpc/get_admin_storage_usage",{method:"POST",token,body:"{}"}).then(row=>{
+      if(!row||!Number.isFinite(Number(row.database_bytes))||!Number.isFinite(Number(row.storage_bytes)))throw new Error("ข้อมูลพื้นที่ไม่ครบ");
+      if(active)setData(row);
+    }).catch(()=>{if(active){setData(null);setError("ตรวจพื้นที่ไม่สำเร็จ กรุณาตรวจการติดตั้ง SQL และสิทธิ์แอดมิน");}}).finally(()=>{if(active)setLoading(false);});
+    const timer=setInterval(()=>{if(active)setRevision(v=>v+1);},300000);
+    return()=>{active=false;clearInterval(timer);};
+  },[token,revision]);
+  const metrics=data?[
+    {label:"ฐานข้อมูล",value:Number(data.database_bytes),limit:Number(data.database_limit_bytes)},
+    {label:"พื้นที่รูปและไฟล์",value:Number(data.storage_bytes),limit:Number(data.storage_limit_bytes)}
+  ]:[];
+  const max=metrics.reduce((n,m)=>Math.max(n,m.limit>0?m.value/m.limit*100:0),0);
+  const level=max>=95?"วิกฤต: ควรจัดการพื้นที่ทันที":max>=85?"ใกล้เต็ม: ควรตรวจแพ็กเกจเพิ่มพื้นที่":max>=70?"เริ่มใช้พื้นที่มาก: วางแผนเพิ่มพื้นที่":"พื้นที่ยังเหลือ";
+  const color=max>=95?C.red:max>=70?C.yellow:C.green;
+  const bytes=n=>n>=1e9?`${(n/1e9).toFixed(2)} GB`:`${(n/1e6).toFixed(2)} MB`;
+  if(compact){
+    if(loading&&!data)return null;
+    if(error)return <button onClick={onOpen} style={{textAlign:"left",padding:12,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white,color:C.red}}>ตรวจพื้นที่ใช้งานไม่ได้ · เปิดรายละเอียด</button>;
+    return <button onClick={onOpen} style={{textAlign:"left",padding:12,border:`1px solid ${color}`,borderRadius:8,background:C.white,color:C.navy,lineHeight:1.6}}><b>พื้นที่ใช้งาน · {level}</b><div style={{fontSize:12}}>ฐานข้อมูล {bytes(metrics[0].value)} / {bytes(metrics[0].limit)} · ไฟล์ {bytes(metrics[1].value)} / {bytes(metrics[1].limit)}</div><div style={{fontSize:11,color:C.g600}}>ค่าประมาณ เทียบโควตา Free</div></button>;
+  }
+  return <div style={{display:"grid",gap:14}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><h2 style={{fontSize:18,margin:0,color:C.navy}}>พื้นที่ใช้งาน</h2><button title="รีเฟรชพื้นที่ใช้งาน" aria-label="รีเฟรชพื้นที่ใช้งาน" disabled={loading} onClick={()=>setRevision(v=>v+1)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>↻</button></div>
+    {loading&&<div role="status">กำลังตรวจพื้นที่...</div>}
+    {error&&<div role="alert" style={{color:C.red}}>{error}</div>}
+    {data&&<>
+      <div role="status" style={{borderLeft:`4px solid ${color}`,padding:12,background:C.white,color:C.navy,fontWeight:700}}>{level}</div>
+      <div style={{fontSize:12,color:C.g600}}>เทียบโควตา {data.quota_reference} · ตรวจเมื่อ {new Date(data.measured_at).toLocaleString("th-TH")}</div>
+      {metrics.map(m=>{const percent=m.limit>0?m.value/m.limit*100:0;return <section key={m.label} style={{padding:"14px 0",borderBottom:`1px solid ${C.g200}`}}><div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}><b>{m.label}</b><b>{percent.toFixed(1)}%</b></div><progress aria-label={m.label} value={Math.min(100,percent)} max={100} style={{width:"100%",height:14,accentColor:percent>=95?C.red:percent>=70?C.yellow:C.green}}/><div style={{fontSize:13}}>{bytes(m.value)} / {bytes(m.limit)} · เหลือประมาณ {bytes(Math.max(0,m.limit-m.value))}</div></section>;})}
+      {Number(data.unknown_sizes)>0&&<div style={{color:C.red,fontSize:13}}>มีไฟล์ที่ไม่ทราบขนาด {data.unknown_sizes} รายการ ยอดไฟล์อาจต่ำกว่าจริง</div>}
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left"}}>พื้นที่จัดเก็บ</th><th>ไฟล์</th><th>ขนาด</th></tr></thead><tbody>{(data.buckets||[]).map(b=><tr key={b.bucket}><td style={{padding:"8px 0",overflowWrap:"anywhere"}}>{b.bucket}</td><td style={{textAlign:"center"}}>{b.files}</td><td style={{textAlign:"right",whiteSpace:"nowrap"}}>{bytes(Number(b.bytes))}</td></tr>)}</tbody></table></div>
+    </>}
+    <div style={{fontSize:13,lineHeight:1.8,color:C.g600}}>แจ้งเตือนที่ 70% · แนะนำตรวจแพ็กเกจที่ 85% · วิกฤตที่ 95%<br/>ขนาดฐานข้อมูลและไฟล์เป็นค่าประมาณจากโครงการนี้ ไม่ใช่ยอดคิดค่าบริการ และไม่รวม Egress หรือจำนวนผู้ใช้รายเดือน หากเปลี่ยนแพ็กเกจแล้ว ต้องปรับโควตาอ้างอิงก่อน</div>
+    <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color:C.navy,fontWeight:700}}>เปิด Supabase เพื่อตรวจ Usage และแพ็กเกจจริง</a>
+  </div>;
+}
+
 function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
   const [studentCount,setStudentCount]=useState(0);
@@ -3174,6 +3215,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(role==="admin")menus.push({id:"pos",icon:"💵",label:tx("POS เก็บเงิน","POS"),bg:"linear-gradient(135deg,#7c2d12,#ea580c)",action:()=>window.open("http://localhost:8088/","_blank","noopener,noreferrer")});
   if(role==="admin")menus.push({id:"warehouse",icon:"📦",label:tx("คลังสินค้า","Warehouse"),bg:"linear-gradient(135deg,#0f766e,#14b8a6)",action:()=>setPage("supply-list")});
   if(role==="admin")menus.push({id:"timetable-admin",icon:"🗓️",label:tx("ตารางสอน","Timetables"),bg:C.navy,action:()=>setPage("timetable-admin")});
+  if(role==="admin")menus.push({id:"storage-usage",icon:"💾",label:tx("พื้นที่ใช้งาน","Storage usage"),bg:C.green,action:()=>setPage("storage-usage")});
   if(role==="teacher"||role==="teacher_parent")menus=menus.filter(item=>item.id!=="assessment");
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
   if(loading)return <Spin/>;
@@ -3181,6 +3223,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {tuitionPendingCount>0&&<button onClick={()=>setPage("tuition")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.yellow}`,borderRadius:8,background:C.yellowL,color:C.navy,fontSize:14,fontWeight:800,lineHeight:1.6}}>🔔 มีหลักฐานชำระค่าเทอมรอตรวจ {tuitionPendingCount} รายการ</button>}
       {tuitionPendingError&&<div role="status" style={{fontSize:12,color:C.red}}>{tuitionPendingError}</div>}
+      {role==="admin"&&<AdminStorageUsage token={token} compact onOpen={()=>setPage("storage-usage")}/>}
       {/* Profile banner ครู */}
       <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,borderRadius:20,padding:20,position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",right:-15,top:-15,width:110,height:110,borderRadius:99,background:"rgba(201,162,39,0.12)"}}/>
@@ -3607,6 +3650,7 @@ function App(){
       if(subPage==="schedule"&&role==="teacher")return <div><Back/><TeacherSchedule token={token} profile={profile}/></div>;
       if(subPage==="schedule"&&role==="student")return <div><Back/><OwnStudentTimetable token={token} profile={profile}/></div>;
       if(subPage==="timetable-admin"&&role==="admin")return <div><Back/><AdminTimetables token={token}/></div>;
+      if(subPage==="storage-usage"&&role==="admin")return <div><Back/><AdminStorageUsage token={token}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
