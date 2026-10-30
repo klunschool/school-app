@@ -2089,6 +2089,7 @@ function TuitionView({token,profile,student}){
   const [addItemForm,setAddItemForm]=useState(null);
   const [addItemMessage,setAddItemMessage]=useState("");
   const [cashForm,setCashForm]=useState(null);
+  const [transferReceipt,setTransferReceipt]=useState(null);
   const [cashMessage,setCashMessage]=useState("");
   const [reviewAllocations,setReviewAllocations]=useState({});
   const [itemBalances,setItemBalances]=useState([]);
@@ -2286,6 +2287,15 @@ function TuitionView({token,profile,student}){
     }catch(e){setError(e.message);}
     finally{setBusy("");}
   }
+  const receiptReference=(book,number)=>book?.trim()?`เล่มที่ ${book.trim()} เลขที่ ${number.trim()}`:number.trim();
+  const splitReceiptReference=value=>{
+    const match=String(value||"").match(/^เล่มที่ (.*?) เลขที่ (.*)$/);
+    return match?{book:match[1],number:match[2]}:{book:"",number:value||""};
+  };
+  const validReceiptReference=(book,number)=>{
+    if(book?.includes(" เลขที่ ")||/[\r\n]/.test(book||"")||receiptReference(book,number).length>100){setError("เล่มที่และเลขที่รวมกันยาวเกินไป หรือมีรูปแบบไม่ถูกต้อง");return false;}
+    return true;
+  };
   const findExistingCashReceipt=value=>{
     const key=String(value||"").trim().toLowerCase();
     if(!key)return null;
@@ -2302,14 +2312,15 @@ function TuitionView({token,profile,student}){
   async function recordCash(){
     if(!cashForm||busy)return;
     if(!cashForm.firstReceiver?.trim()||cashForm.firstReceiver.trim().length<2){setError("กรุณาระบุชื่อผู้รับเงินคนแรกอย่างน้อย 2 ตัวอักษร");return;}
-    if(findExistingCashReceipt(cashForm.receipt)){setError("เลขใบเสร็จนี้เคยบันทึกแล้ว กรุณาตรวจสอบประวัติก่อนรับเงินซ้ำ");return;}
+    if(!validReceiptReference(cashForm.book,cashForm.receipt))return;
+    if(findExistingCashReceipt(receiptReference(cashForm.book,cashForm.receipt))){setError("เลขใบเสร็จนี้เคยบันทึกแล้ว กรุณาตรวจสอบประวัติก่อนรับเงินซ้ำ");return;}
     const amount=Number(cashForm.amount);
     if(!Number.isFinite(amount)||amount<=0||!/^\d+(\.\d{1,2})?$/.test(cashForm.amount.trim())||!cashForm.receipt.trim()||!cashForm.paidAt){setError("กรุณากรอกยอดเงิน วันที่รับเงินจริง และเลขใบเสร็จให้ครบ");return;}
     const allocations=validatedAllocations(cashForm.amounts||{},amount);
     if(!allocations)return;
     const invoice=[...staffInvoices,...invoices].find(i=>i.id===cashForm.invoiceId);
     if(!invoice)return;
-    if(!window.confirm(`ยืนยันรับชำระเงินสด ${money(amount)} บาท\nนักเรียน ${invoice.students?.full_name||invoice.invoice_no}\nเลขใบเสร็จ ${cashForm.receipt.trim()}\nยอดนี้จะได้รับการอนุมัติโดยบัญชีของคุณทันที ยืนยันหรือไม่?`))return;
+    if(!window.confirm(`ยืนยันรับชำระเงินสด ${money(amount)} บาท\nนักเรียน ${invoice.students?.full_name||invoice.invoice_no}\nเลขใบเสร็จ ${receiptReference(cashForm.book,cashForm.receipt)}\nยอดนี้จะได้รับการอนุมัติโดยบัญชีของคุณทันที ยืนยันหรือไม่?`))return;
     setBusy("cash");setError("");setCashMessage("");setAddItemMessage("");
     try{
       let imagePath=cashForm.uploadedImagePath||null;
@@ -2320,8 +2331,8 @@ function TuitionView({token,profile,student}){
         await uploadPaymentSlip(cashForm.image,imagePath,token);
         setCashForm(v=>({...v,uploadedImagePath:imagePath}));
       }
-      const result=await sbFetch("rpc/record_cash_tuition_payment_with_receiver",{method:"POST",token,body:JSON.stringify({p_invoice_id:cashForm.invoiceId,p_amount:amount,p_paid_at:cashForm.paidAt+":00+07:00",p_receipt_number:cashForm.receipt.trim(),p_request_id:cashForm.requestId,p_first_receiver_name:cashForm.firstReceiver.trim(),p_note:cashForm.note.trim(),p_allocations:allocations,p_receipt_image_path:imagePath})});
-      setCashForm(null);setCashMessage(`บันทึกเงินสดแล้ว · ใบเสร็จ ${cashForm.receipt.trim()} · คงเหลือ ฿${money(result.remaining_amount)}`);await load();
+      const result=await sbFetch("rpc/record_cash_tuition_payment_with_receiver",{method:"POST",token,body:JSON.stringify({p_invoice_id:cashForm.invoiceId,p_amount:amount,p_paid_at:cashForm.paidAt+":00+07:00",p_receipt_number:receiptReference(cashForm.book,cashForm.receipt),p_request_id:cashForm.requestId,p_first_receiver_name:cashForm.firstReceiver.trim(),p_note:cashForm.note.trim(),p_allocations:allocations,p_receipt_image_path:imagePath})});
+      setCashForm(null);setCashMessage(`บันทึกเงินสดแล้ว · ใบเสร็จ ${receiptReference(cashForm.book,cashForm.receipt)} · คงเหลือ ฿${money(result.remaining_amount)}`);await load();
     }catch(e){setError(/Receipt number already recorded|receipt_key/i.test(e.message)?"เลขใบเสร็จนี้เคยบันทึกแล้ว กรุณาตรวจสอบประวัติ ไม่สามารถรับเงินซ้ำด้วยเลขนี้ได้":e.message);}
     finally{setBusy("");}
   }
@@ -2349,7 +2360,38 @@ function TuitionView({token,profile,student}){
     const info=Array.isArray(p.cash_tuition_payments)?p.cash_tuition_payments[0]:p.cash_tuition_payments;
     return <div style={{fontSize:12,lineHeight:1.7,color:C.navy,marginTop:6}}>💵 เงินสด · รับเงินจริง {formatThaiDateTime(p.paid_at)}{info&&<><br/>ผู้รับเงินคนแรก: {info.first_receiver_name||"ไม่ระบุ (รายการเดิม)"}<br/>ผู้บันทึก/อนุมัติ: {info.recorded_by_name}<br/>บันทึกเข้าระบบ: {formatThaiDateTime(info.recorded_at)}</>}</div>;
   };
-  const receiptImageButton=p=>p.receipt_image_path?<button onClick={()=>openSlip(p.receipt_image_path)} style={{marginTop:8,padding:"8px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูรูปใบเสร็จ</button>:null;
+  const saveTransferReceipt=async()=>{
+    if(!transferReceipt?.number.trim()){setError("กรุณากรอกเลขใบเสร็จ");return;}
+    if(!validReceiptReference(transferReceipt.book,transferReceipt.number))return;
+    const duplicate=findExistingCashReceipt(receiptReference(transferReceipt.book,transferReceipt.number));
+    if(duplicate&&duplicate.id!==transferReceipt.paymentId){setError("เลขใบเสร็จนี้เคยใช้แล้ว");return;}
+    setBusy("transfer-receipt");setError("");
+    try{
+      let imagePath=transferReceipt.uploadedPath||null;
+      if(transferReceipt.file&&!imagePath){
+        const file=transferReceipt.file;
+        const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[file.type];
+        if(!ext||!file.size||file.size>5*1024*1024)throw new Error("กรุณาใช้รูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB");
+        imagePath=`${profile.id}/transfer-receipts/${transferReceipt.paymentId}/${crypto.randomUUID()}.${ext}`;
+        await uploadPaymentSlip(file,imagePath,token);
+        setTransferReceipt(v=>v?{...v,uploadedPath:imagePath}:v);
+      }
+      await sbFetch("rpc/attach_approved_transfer_receipt",{method:"POST",token,body:JSON.stringify({p_payment_id:transferReceipt.paymentId,p_receipt_number:receiptReference(transferReceipt.book,transferReceipt.number),p_image_path:imagePath})});
+      setTransferReceipt(null);setCashMessage("บันทึกใบเสร็จแล้ว โดยไม่เปลี่ยนยอดชำระ");await load();
+    }catch(e){setError(/Receipt number already recorded/i.test(e.message)?"เลขใบเสร็จนี้เคยใช้แล้ว":e.message);}
+    finally{setBusy("");}
+  };
+  const transferReceiptControls=p=>{
+    if((!isStaff&&!isTeacher)||p.status!=="approved"||p.method==="cash")return null;
+    if(transferReceipt?.paymentId!==p.id)return <button disabled={!!busy} onClick={()=>{setError("");setTransferReceipt({paymentId:p.id,...splitReceiptReference((Array.isArray(p.receipts)?p.receipts[0]:p.receipts)?.receipt_no),file:null});}} style={{marginTop:8,padding:"8px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>เพิ่ม/แก้ไขใบเสร็จเงินโอน</button>;
+    return <div style={{display:"grid",gap:8,marginTop:10}}>
+      <label>เล่มที่<input aria-label="เล่มที่ใบเสร็จเงินโอน" maxLength={30} disabled={!!busy} value={transferReceipt.book||""} onChange={e=>setTransferReceipt(v=>({...v,book:e.target.value}))} style={{width:"100%",padding:10,border:`1px solid ${C.g200}`,borderRadius:8}}/></label>
+      <label>เลขที่ *<input aria-label="เลขใบเสร็จเงินโอน" required maxLength={100} disabled={!!busy} value={transferReceipt.number} onChange={e=>setTransferReceipt(v=>({...v,number:e.target.value}))} style={{width:"100%",padding:10,border:`1px solid ${C.g200}`,borderRadius:8}}/></label>
+      <label>รูปใบเสร็จ (แนบภายหลังได้)<input aria-label="รูปใบเสร็จเงินโอน" type="file" accept="image/jpeg,image/png,image/webp" disabled={!!busy} onChange={e=>{const file=e.target.files?.[0]||null;if(file&&(!["image/jpeg","image/png","image/webp"].includes(file.type)||!file.size||file.size>5*1024*1024)){setError("กรุณาใช้รูป JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB");e.target.value="";return;}setError("");setTransferReceipt(v=>({...v,file,uploadedPath:null}));}} style={{display:"block",maxWidth:"100%",marginTop:6}}/></label>
+      <div style={{display:"flex",gap:8}}><button disabled={!!busy} onClick={saveTransferReceipt} style={{padding:10,border:0,borderRadius:8,background:C.navy,color:C.white}}>บันทึกใบเสร็จเงินโอน</button><button disabled={!!busy} onClick={()=>setTransferReceipt(null)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>ยกเลิก</button></div>
+    </div>;
+  };
+  const receiptImageButton=p=><>{p.receipt_image_path&&<button onClick={()=>openSlip(p.receipt_image_path)} style={{marginTop:8,padding:"8px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูรูปใบเสร็จ</button>}{transferReceiptControls(p)}</>;
   const paymentItemInputs=(invoiceId,amounts,onChange)=><fieldset style={{margin:0,padding:10,border:`1px solid ${C.g200}`,borderRadius:8,minWidth:0}}>
     <legend style={{fontSize:12,fontWeight:700}}>ระบุรายการที่ชำระ</legend>
     {itemBalances.filter(i=>i.invoice_id===invoiceId&&Number(i.remaining_amount)>0).map(i=><label key={i.item_id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 110px",alignItems:"center",gap:8,fontSize:12,marginTop:6}}>
@@ -2366,14 +2408,15 @@ function TuitionView({token,profile,student}){
     const pending=payments.some(p=>p.invoice_id===inv.id&&p.status==="pending");
     if(cashForm?.invoiceId!==inv.id)return <div style={{marginTop:10}}><button disabled={!!busy||pending} onClick={()=>{setError("");setCashMessage("");setCashForm({invoiceId:inv.id,amount:"",receipt:"",paidAt:new Date(Date.now()+7*3600000).toISOString().slice(0,16),note:"",requestId:crypto.randomUUID()});}} style={{padding:"8px 10px",border:`1px solid ${C.green}`,borderRadius:8,background:C.white,color:C.green,fontWeight:800}}>💵 รับชำระเงินสด</button>{pending&&<div style={{fontSize:12,color:C.yellow,marginTop:5}}>มีสลิปรอตรวจ กรุณาตรวจให้เสร็จก่อนบันทึกเงินสด</div>}</div>;
     const change=(key,value)=>setCashForm(p=>({...p,[key]:value,requestId:crypto.randomUUID()}));
-    const existingReceipt=findExistingCashReceipt(cashForm.receipt);
+    const existingReceipt=findExistingCashReceipt(receiptReference(cashForm.book,cashForm.receipt));
     const inputStyle={width:"100%",padding:10,border:`1px solid ${C.g200}`,borderRadius:8,marginTop:4};
     return <div style={{display:"grid",gap:8,marginTop:12,paddingTop:12,borderTop:`1px solid ${C.g200}`}}>
       <div style={{fontSize:14,fontWeight:800,color:C.navy}}>รับชำระเงินสด · คงเหลือ ฿{money(Math.max(0,Number(inv.total_amount)-Number(inv.paid_amount)))}</div>
       <label style={{fontSize:12}}>จำนวนเงินสด (บาท)<input aria-label="จำนวนเงินสด" type="number" min="0.01" step="0.01" disabled={!!busy} value={cashForm.amount} onChange={e=>change("amount",e.target.value)} style={inputStyle}/></label>
       {paymentItemInputs(inv.id,cashForm.amounts||{},amounts=>change("amounts",amounts))}
       <label style={{fontSize:12}}>วันที่และเวลารับเงินจริง (เวลาไทย)<input aria-label="เวลารับเงินสด" type="datetime-local" disabled={!!busy} value={cashForm.paidAt} onChange={e=>change("paidAt",e.target.value)} style={{...inputStyle,minWidth:0}}/></label>
-      <label style={{fontSize:12,color:existingReceipt?C.red:undefined}}>เลขใบเสร็จที่ออกแล้ว<input aria-label="เลขใบเสร็จเงินสด" aria-invalid={!!existingReceipt} maxLength={100} disabled={!!busy} value={cashForm.receipt} onChange={e=>change("receipt",e.target.value)} onKeyDown={e=>{if(existingReceipt&&e.key==="Tab"&&!e.shiftKey)e.preventDefault();}} style={{...inputStyle,...(existingReceipt?{border:`2px solid ${C.red}`,color:C.red,background:C.redL,outlineColor:C.red}:{})}}/></label>
+      <label style={{fontSize:12}}>เล่มที่<input aria-label="เล่มที่ใบเสร็จเงินสด" maxLength={30} disabled={!!busy} value={cashForm.book||""} onChange={e=>change("book",e.target.value)} style={inputStyle}/></label>
+      <label style={{fontSize:12,color:existingReceipt?C.red:undefined}}>เลขที่ *<input aria-label="เลขใบเสร็จเงินสด" aria-invalid={!!existingReceipt} maxLength={100} disabled={!!busy} value={cashForm.receipt} onChange={e=>change("receipt",e.target.value)} onKeyDown={e=>{if(existingReceipt&&e.key==="Tab"&&!e.shiftKey)e.preventDefault();}} style={{...inputStyle,...(existingReceipt?{border:`2px solid ${C.red}`,color:C.red,background:C.redL,outlineColor:C.red}:{})}}/></label>
       {existingReceipt&&<div role="alert" style={{fontSize:12,color:C.red,background:C.redL,padding:10,borderRadius:8,lineHeight:1.7}}>เลขใบเสร็จนี้เคยบันทึกแล้ว · ยอด ฿{money(existingReceipt.amount)} · วันที่ {formatThaiDateTime(existingReceipt.paid_at)}<br/>กรุณาตรวจสอบแท็บประวัติ ไม่สามารถบันทึกรับเงินซ้ำด้วยเลขนี้ได้</div>}
       <label style={{fontSize:12}}>รูปใบเสร็จ (ถ้ามี)<input key={cashForm.imageInputKey||0} aria-label="แนบรูปใบเสร็จ" type="file" accept="image/jpeg,image/png,image/webp" disabled={!!busy||!!existingReceipt} onChange={e=>{
         const file=e.target.files?.[0];
