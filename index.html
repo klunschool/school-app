@@ -1377,6 +1377,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
   const [talkClass,setTalkClass]=useState("all");
   const [selected,setSelected]=useState(student||null);
   const [unreadByStudent,setUnreadByStudent]=useState({});
+  const [adminReadError,setAdminReadError]=useState("");
   const [messages,setMessages]=useState([]);
   const [body,setBody]=useState("");
   const [loading,setLoading]=useState(true);
@@ -1401,7 +1402,13 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
           stu=ids.length?await sbFetch(`students?class_id=in.(${ids.join(",")})&select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc`,{token}).catch(()=>[]):[];
         }
         let unreadMap={};
-        if(stu.length){
+        if(role==="admin"){
+          try{
+            const summary=await sbFetch("rpc/get_admin_chat_unread",{method:"POST",token,body:"{}"});
+            if(!Array.isArray(summary?.students))throw new Error("Invalid unread summary");
+            unreadMap=Object.fromEntries(summary.students.map(m=>[m.student_id,m]));setAdminReadError("");
+          }catch(e){setAdminReadError("โหลดสถานะยังไม่อ่านของแอดมินไม่สำเร็จ");}
+        }else if(stu.length){
           const ids=stu.map(s=>s.id).filter(Boolean);
           const readCol=isStaff?"teacher_read_at":"parent_read_at";
           const unreadFrom=isStaff?"parent_id=not.is.null":"teacher_id=not.is.null";
@@ -1416,6 +1423,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
             return String(a.classes?.name||"").localeCompare(String(b.classes?.name||""),"th")||Number(a.student_no||0)-Number(b.student_no||0);
           });
         }
+        if(role==="admin")stu=[...stu].sort((a,b)=>(unreadMap[b.id]?.count||0)-(unreadMap[a.id]?.count||0));
         setUnreadByStudent(unreadMap);
         setStudents(stu);
         if(!selected&&stu.length>0)setSelected(stu[0]);
@@ -1426,6 +1434,16 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
     }finally{setLoading(false);}
   },[token,profile.id,role,student?.id]);
   useEffect(()=>{load();},[load]);
+  useEffect(()=>{
+    if(role!=="admin")return;
+    let active=true;
+    const refresh=()=>sbFetch("rpc/get_admin_chat_unread",{method:"POST",token,body:"{}"}).then(summary=>{
+      if(!Array.isArray(summary?.students))throw new Error("Invalid unread summary");
+      if(active){setUnreadByStudent(Object.fromEntries(summary.students.map(m=>[m.student_id,m])));setAdminReadError("");}
+    }).catch(()=>{if(active)setAdminReadError("โหลดสถานะยังไม่อ่านของแอดมินไม่สำเร็จ");});
+    const timer=setInterval(refresh,15000);
+    return()=>{active=false;clearInterval(timer);};
+  },[role,token]);
   useEffect(()=>{
     let active=true;
     setTuitionMessages([]);setTuitionMessageError("");
@@ -1451,6 +1469,18 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
           if(!active)return;
           const list=rows||[];
           setMessages(list);
+          if(role==="admin"){
+            if(document.visibilityState!=="visible")return;
+            const ids=list.filter(m=>m.sender_id!==profile.id).map(m=>m.id);
+            const mark=async()=>{
+              for(let i=0;i<ids.length;i+=1000)await sbFetch("rpc/mark_admin_chat_read",{method:"POST",token,body:JSON.stringify({p_student_id:selected.id,p_message_ids:ids.slice(i,i+1000)})});
+              const summary=await sbFetch("rpc/get_admin_chat_unread",{method:"POST",token,body:"{}"});
+              if(!Array.isArray(summary?.students))throw new Error("Invalid unread summary");
+              if(active){setUnreadByStudent(Object.fromEntries(summary.students.map(m=>[m.student_id,m])));setAdminReadError("");}
+            };
+            mark().catch(()=>{if(active)setAdminReadError("บันทึกสถานะอ่านของแอดมินไม่สำเร็จ");});
+            return;
+          }
           const readCol=isStaff?"teacher_read_at":"parent_read_at";
           const incoming=m=>isStaff?!!m.parent_id:!!m.teacher_id;
           const readFilter=isStaff?"parent_id=not.is.null":"teacher_id=not.is.null";
@@ -1464,7 +1494,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
     loadMessages();
     const timer=setInterval(loadMessages,15000);
     return()=>{active=false;clearInterval(timer);};
-  },[token,selected?.id,profile.id,isStaff,canReadTuition]);
+  },[token,selected?.id,profile.id,isStaff,canReadTuition,role]);
   async function send(){
     if(!selected?.id||!body.trim())return;
     setSending(true);
@@ -1497,6 +1527,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{background:C.white,borderRadius:16,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💬 พูดคุย / ติดต่อครู</div>
+        {adminReadError&&<div role="alert" style={{fontSize:12,color:C.red,marginTop:8}}>{adminReadError}</div>}
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>ใช้สำหรับเรื่องการเรียน การมาเรียน งานโรงเรียน และเรื่องจำเป็นของนักเรียน</div>
         {role==="admin"&&<label style={{display:"block",fontSize:12,color:C.navy,fontWeight:700,marginTop:12}}>ห้องเรียน
           <select aria-label="ห้องเรียนในบทสนทนา" value={talkClass} onChange={e=>{
@@ -1510,7 +1541,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
           </select>
         </label>}
         {isStaff&&unreadStudents.length>0&&<div style={{marginTop:12,background:C.redL,border:`1px solid ${C.red}`,borderRadius:12,padding:10}}>
-          <div style={{fontSize:12,fontWeight:900,color:C.red,marginBottom:7}}>ข้อความใหม่จากผู้ปกครอง</div>
+          <div style={{fontSize:12,fontWeight:900,color:C.red,marginBottom:7}}>{role==="admin"?"ข้อความที่แอดมินยังไม่ได้อ่าน":"ข้อความใหม่จากผู้ปกครอง"}</div>
           {unreadStudents.slice(0,5).map(s=><button key={s.id} onClick={()=>setSelected(s)} style={{width:"100%",border:"none",background:C.white,borderRadius:9,padding:"8px 10px",marginTop:6,textAlign:"left",cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
               <span style={{fontSize:13,fontWeight:900,color:C.navy}}>{studentLabel(s)}</span>
@@ -1550,10 +1581,11 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
 }
 
 // ======= ADMIN REPORTS =======
-function AdminReports({token}){
+function AdminReports({token,profile}){
   const [data,setData]=useState({classes:[],students:[],parents:[],ann:[],talk:[],leave:[]});
   const [classId,setClassId]=useState("all");
   const [detail,setDetail]=useState("students");
+  const [reportReadError,setReportReadError]=useState("");
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     const load=async()=>{
@@ -1566,7 +1598,10 @@ function AdminReports({token}){
         sbFetch("parent_teacher_messages?select=id,student_id,parent_id,teacher_id,sender_id,body,created_at,parent_read_at,teacher_read_at&order=created_at.desc&limit=200",{token}).catch(()=>[]),
         sbFetch("leave_requests?select=id,status,student_id,created_at,leave_date,students(class_id)&order=created_at.desc&limit=200",{token}).catch(()=>[])
       ]);
-      setData({classes:classes||[],students:students||[],parents:parents||[],ann:ann||[],talk:talk||[],leave:leave||[]});
+      setReportReadError("");
+      const readRows=(talk||[]).length?await sbFetch(`admin_message_reads?message_id=in.(${talk.map(m=>m.id).join(",")})&select=message_id`,{token}).catch(()=>{setReportReadError("โหลดสถานะอ่านของแอดมินไม่สำเร็จ");return null;}):[];
+      const readIds=new Set((readRows||[]).map(r=>String(r.message_id)));
+      setData({classes:classes||[],students:students||[],parents:parents||[],ann:ann||[],talk:(talk||[]).map(m=>({...m,admin_unread:readRows===null?null:m.sender_id!==profile.id&&!readIds.has(String(m.id))})),leave:leave||[]});
       setLoading(false);
     };
     load();
@@ -1579,7 +1614,7 @@ function AdminReports({token}){
   const noParent=students.filter(s=>!linkedIds.has(s.id));
   const ann=data.ann.filter(a=>classId==="all"||!a.class_id||String(a.class_id)===classId);
   const talk=data.talk.filter(m=>studentIds.has(m.student_id));
-  const unreadTalk=talk.filter(m=>m.parent_id&&!m.teacher_read_at);
+  const unreadTalk=talk.filter(m=>m.admin_unread===true);
   const talkStudentCount=new Set(talk.map(m=>m.student_id)).size;
   const leave=data.leave.filter(x=>studentIds.has(x.student_id));
   const pendingLeave=leave.filter(x=>x.status==="pending");
@@ -1607,7 +1642,7 @@ function AdminReports({token}){
     if(detail==="students")return students.map(s=>({id:s.id,title:s.full_name,meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"}`,status:linkedIds.has(s.id)?"มีผู้ปกครอง":"ยังไม่มี",color:linkedIds.has(s.id)?C.green:C.red}));
     if(detail==="parents")return students.map(s=>({id:s.id,title:s.full_name,meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"}`,status:linkedIds.has(s.id)?"ผูกแล้ว":"ยังไม่ผูก",color:linkedIds.has(s.id)?C.green:C.red}));
     if(detail==="ann")return ann.map(a=>({id:a.id,title:a.title||"-",meta:`${a.class_id?classNameMap[a.class_id]||"เฉพาะห้อง":"ทั้งโรงเรียน"} · ${formatThaiDate(a.created_at)}`,status:a.pinned?"ปักหมุด":"ประกาศ",color:a.pinned?C.red:C.gold}));
-    if(detail==="talk")return talk.map(m=>{const s=studentMap[m.student_id]||{};return {id:m.id,title:s.full_name||"-",meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"} · ${formatThaiDateTime(m.created_at)}`,body:m.body,status:m.parent_id&&!m.teacher_read_at?"ใหม่":"อ่านแล้ว",color:m.parent_id&&!m.teacher_read_at?C.red:C.green};});
+    if(detail==="talk")return talk.map(m=>{const s=studentMap[m.student_id]||{};return {id:m.id,title:s.full_name||"-",meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"} · ${formatThaiDateTime(m.created_at)}`,body:m.body,status:m.admin_unread===null?"ไม่ทราบสถานะ":m.admin_unread?"แอดมินยังไม่อ่าน":"อ่านแล้ว",color:m.admin_unread?C.red:C.green};});
     if(detail==="leave")return leave.map(l=>{const s=studentMap[l.student_id]||{};return {id:l.id,title:s.full_name||"-",meta:`${s.classes?.name||"-"} · เลขที่ ${s.student_no||"-"} · วันที่ลา ${l.leave_date||"-"}`,status:l.status==="pending"?"รอตรวจ":l.status||"-",color:l.status==="pending"?C.yellow:C.green};});
     if(detail==="classes")return classSummary.filter(c=>c.students>0&&(classId==="all"||String(c.id)===classId)).map(c=>({id:c.id,title:c.name,meta:`นักเรียน ${c.students} คน · ผู้ปกครอง ${c.linked} · คุย ${c.messages}`,status:"ดูห้อง",color:C.navy}));
     return [];
@@ -1629,6 +1664,7 @@ function AdminReports({token}){
           <div><div style={{fontSize:17,fontWeight:900,color:C.navy}}>📈 รายงานผู้ดูแลระบบ</div><div style={{fontSize:12,color:C.g400,marginTop:2}}>สรุปข้อมูลโรงเรียน ผู้ปกครอง ประกาศ และการพูดคุย</div></div>
           <button onClick={exportCsv} style={{border:"none",background:C.navy,color:C.white,borderRadius:10,padding:"9px 10px",fontSize:12,fontWeight:900,cursor:"pointer"}}>ส่งออก CSV</button>
         </div>
+        {reportReadError&&<div role="alert" style={{color:C.red,fontSize:12}}>{reportReadError}</div>}
         <select value={classId} onChange={e=>setClassId(e.target.value)} style={{width:"100%",marginTop:12,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,background:C.white,fontSize:14,fontWeight:800,color:C.navy}}>
           <option value="all">ทุกห้องเรียน</option>
           {data.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -3145,6 +3181,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
   const [studentCount,setStudentCount]=useState(0);
   const [talkUnread,setTalkUnread]=useState(0);
+  const [talkUnreadError,setTalkUnreadError]=useState("");
   const [parentRequestCount,setParentRequestCount]=useState(0);
   const [tuitionPendingCount,setTuitionPendingCount]=useState(0);
   const [tuitionPendingError,setTuitionPendingError]=useState("");
@@ -3165,6 +3202,14 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     let lastStudentIds=[];
     const refreshTalkUnread=async(stuIds=lastStudentIds)=>{
       lastStudentIds=stuIds||[];
+      if(role==="admin"){
+        try{
+          const summary=await sbFetch("rpc/get_admin_chat_unread",{method:"POST",token,body:"{}"});
+          if(!Number.isFinite(Number(summary?.total)))throw new Error("Invalid unread count");
+          setTalkUnread(Number(summary.total));setTalkUnreadError("");
+        }catch(e){setTalkUnreadError("โหลดจำนวนข้อความที่แอดมินยังไม่อ่านไม่สำเร็จ");}
+        return;
+      }
       if(!lastStudentIds.length){setTalkUnread(0);return;}
       const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${lastStudentIds.join(",")})&parent_id=not.is.null&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
       setTalkUnread((unread||[]).length);
@@ -3223,6 +3268,8 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       {tuitionPendingCount>0&&<button onClick={()=>setPage("tuition")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.yellow}`,borderRadius:8,background:C.yellowL,color:C.navy,fontSize:14,fontWeight:800,lineHeight:1.6}}>🔔 มีหลักฐานชำระค่าเทอมรอตรวจ {tuitionPendingCount} รายการ</button>}
       {tuitionPendingError&&<div role="status" style={{fontSize:12,color:C.red}}>{tuitionPendingError}</div>}
+      {role==="admin"&&talkUnread>0&&<button onClick={()=>setPage("talk")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,color:C.navy,fontWeight:800}}>ข้อความที่แอดมินยังไม่ได้อ่าน {talkUnread} ข้อความ</button>}
+      {role==="admin"&&talkUnreadError&&<div role="status" style={{color:C.red,fontSize:12}}>{talkUnreadError}</div>}
       {role==="admin"&&<AdminStorageUsage token={token} compact onOpen={()=>setPage("storage-usage")}/>}
       {/* Profile banner ครู */}
       <div style={{background:`linear-gradient(135deg,${C.navyD},${C.navy})`,borderRadius:20,padding:20,position:"relative",overflow:"hidden"}}>
@@ -3661,7 +3708,7 @@ function App(){
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-usage"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><ParentUsageReport token={token}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
-      if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token}/></div>;
+      if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token} profile={profile}/></div>;
       if(subPage==="supply-list"&&role==="admin")return <div><Back/><SupplyListPage/></div>;
       if(subPage==="password")return <div><Back/><ChangePasswordView email={session?.user?.email||""} token={token} onChanged={onLogout}/></div>;
       if(subPage==="parent-requests"&&role==="admin")return <div><Back/><ParentLinkApprovals token={token} readOnly={isDirector}/></div>;
