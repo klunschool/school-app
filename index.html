@@ -3248,7 +3248,6 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"ann",icon:"📢",label:tx("ประกาศ","Announcements"),bg:`linear-gradient(135deg,${C.gold},${C.goldL})`,action:()=>setPage("announce")},
     {id:"talk",icon:"💬",label:tx("พูดคุย","Talk"),bg:"linear-gradient(135deg,#0891b2,#06b6d4)",badge:talkUnread,action:()=>setPage("talk")},
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
-    {id:"assessment",icon:"🏆",label:tx("ประเมิน","Assessment"),bg:"linear-gradient(135deg,#db2777,#f59e0b)",action:()=>setPage("assessment")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>setPage("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",badge:tuitionPendingCount,action:()=>setPage("tuition")},
   ];

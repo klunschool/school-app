@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v90-admin-chat-unread";
+const CACHE = "school-app-github-v91-hide-assessment-menu";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
