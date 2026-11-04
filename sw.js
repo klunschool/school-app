@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v91-hide-assessment-menu";
+const CACHE = "school-app-github-v92-manual-invoice-term";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
