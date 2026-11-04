@@ -2281,26 +2281,32 @@ function TuitionView({token,profile,student}){
   async function createInvoices(){
     if(!isStaff||busy)return;
     const manual=profile?.role==="admin";
-    const match=manual?/^([1-3])\s*\/\s*([0-9]{4})$/.exec(createForm.termId.trim()):null;
-    if(manual&&!match){setError("กรุณากรอกภาคเรียน/ปีการศึกษา เช่น 2/2569");return;}
+    const label=manual?createForm.termId.trim().normalize("NFC"):"";
+    const match=/^([1-3])\s*\/\s*([0-9]{4})$/.exec(label);
     if(invoiceStudentsLoading||invoiceStudentsError||selectedStudentIds.some(id=>!invoiceStudents.some(s=>String(s.id)===id))){
       setError("กรุณารอรายชื่อนักเรียนโหลดสำเร็จ แล้วเลือกผู้รับใบแจ้งยอดอีกครั้ง");return;
     }
-    if(!createForm.termId||!createForm.classId||selectedStudentIds.length===0||!createForm.description.trim()||Number(createForm.amount)<=0||!createForm.dueDate){
+    if((!manual&&!createForm.termId)||!createForm.classId||selectedStudentIds.length===0||!createForm.description.trim()||Number(createForm.amount)<=0||!createForm.dueDate){
       setError("กรุณากรอกข้อมูลใบแจ้งยอดให้ครบ");return;
     }
     if(!window.confirm(`สร้างใบแจ้งยอดเฉพาะนักเรียนที่เลือก ${selectedStudentIds.length} คน คนละ ${money(createForm.amount)} บาท รวม ${money(Number(createForm.amount)*selectedStudentIds.length)} บาท ใช่หรือไม่?`))return;
     setBusy("create");setError("");
     try{
       let termId=Number(createForm.termId);
-      if(match){
-        const [,term,year]=match;
+      if(manual){
+        const term=match?Number(match[1]):1;
+        let year=match?match[2]:"UNSPECIFIED";
+        if(label&&!match){
+          const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(label));
+          year="CUSTOM-"+Array.from(new Uint8Array(digest).slice(0,12),b=>b.toString(16).padStart(2,"0")).join("");
+        }
+        const name=match?`ภาคเรียนที่ ${term}/${year}`:label||"ไม่ระบุภาคเรียน";
         const path=`fee_terms?academic_year=eq.${year}&term_no=eq.${term}&select=id,is_active`;
         let [row]=await sbFetch(path,{token});
         if(!row){
           await sbFetch("fee_terms?on_conflict=academic_year,term_no",{method:"POST",token,
             headers:{Prefer:"resolution=ignore-duplicates,return=representation"},
-            body:JSON.stringify({academic_year:year,term_no:Number(term),name:`ภาคเรียนที่ ${term}/${year}`})});
+            body:JSON.stringify({academic_year:year,term_no:term,name})});
           [row]=await sbFetch(path,{token});
         }
         if(!row?.is_active)throw new Error("ภาคเรียนนี้ยังไม่เปิดใช้งาน");
@@ -2574,7 +2580,7 @@ function TuitionView({token,profile,student}){
       {staffSection==="manage"&&<div style={box}>
         <div style={{fontSize:14,fontWeight:800,color:C.navy,marginBottom:10}}>สร้างใบแจ้งยอดเฉพาะคน</div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {profile?.role==="admin"?<input aria-label="ภาคเรียน/ปีการศึกษา" placeholder="ภาคเรียน/ปีการศึกษา เช่น 2/2569" value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} maxLength={16} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>:<select value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
+          {profile?.role==="admin"?<input aria-label="ภาคเรียนหรือชื่อกลุ่มใบแจ้งยอด (ไม่บังคับ)" placeholder="เช่น ค้างเก่า หรือ 2/2569 (ไม่บังคับ)" value={createForm.termId} onChange={e=>{setError("");setCreateForm(p=>({...p,termId:e.target.value}));}} maxLength={60} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}/>:<select value={createForm.termId} onChange={e=>setCreateForm(p=>({...p,termId:e.target.value}))} style={{padding:10,borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14}}>
             <option value="">เลือกปีการศึกษา/ภาคเรียน</option>
             {terms.map(t=><option key={t.id} value={t.id}>{t.name} ({t.academic_year})</option>)}
           </select>}
