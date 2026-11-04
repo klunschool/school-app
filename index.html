@@ -523,6 +523,38 @@ function ResetPasswordView({token,onDone}){
   );
 }
 
+function DailyTuitionNotificationReport({token}){
+  const [date,setDate]=useState(localDateISO);
+  const [reload,setReload]=useState(0);
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    setResult(null);setError("");
+    sbFetch("rpc/get_daily_tuition_notification_report",{method:"POST",token,body:JSON.stringify({p_date:date})})
+      .then(data=>{if(active)setResult(data);})
+      .catch(()=>{if(active)setError("โหลดรายงานไม่สำเร็จ กรุณาลองใหม่");});
+    return()=>{active=false;};
+  },[date,reload,token]);
+  const statuses={succeeded:"ทำงานสำเร็จ",failed:"ทำงานไม่สำเร็จ",running:"กำลังทำงาน",starting:"กำลังเริ่มทำงาน"};
+  return <section style={{background:C.white,padding:16,borderRadius:8}}>
+    <h3 style={{fontSize:14,color:C.navy,margin:"0 0 12px"}}>รายงานข้อความเตือนยอดค้าง 09.00 น.</h3>
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <input type="date" aria-label="วันที่รายงาน" value={date} max={localDateISO()} onChange={e=>{if(e.target.value)setDate(e.target.value);}} style={{padding:8,border:`1px solid ${C.g200}`,borderRadius:8}}/>
+      <button type="button" title="รีเฟรชรายงาน" aria-label="รีเฟรชรายงาน" onClick={()=>setReload(n=>n+1)} style={{width:40,height:40,border:`1px solid ${C.g200}`,borderRadius:8,background:C.g50,color:C.navy}}>↻</button>
+    </div>
+    {error?<p role="alert" style={{color:C.red}}>{error}</p>:!result?<p role="status">กำลังโหลดรายงาน...</p>:<>
+      <p style={{fontSize:13,color:C.navy}}>รอบ 09.00 น.: {result.run?(statuses[result.run.status]||result.run.status):"ไม่พบประวัติการทำงาน"}</p>
+      {result.run?.started_at&&<p style={{fontSize:12,color:C.g600}}>เริ่มทำงาน {formatThaiDateTime(result.run.started_at)}</p>}
+      <dl style={{display:"grid",gridTemplateColumns:"1fr auto",gap:8,fontSize:13,marginBottom:0}}>
+        <dt>สร้างข้อความในแอป</dt><dd style={{margin:0,fontWeight:800}}>{result.created} รายการ</dd>
+        <dt>อ่านแล้ว</dt><dd style={{margin:0,fontWeight:800}}>{result.read} รายการ</dd>
+        <dt>ยังไม่อ่าน</dt><dd style={{margin:0,fontWeight:800}}>{result.unread} รายการ</dd>
+      </dl>
+    </>}
+  </section>;
+}
+
 function SupportContact({onBack}){
   const [email,setEmail]=useState("");
   const [category,setCategory]=useState("login");
@@ -2547,7 +2579,9 @@ function TuitionView({token,profile,student}){
       <div style={box}>
         <div style={{fontSize:16,fontWeight:800,color:C.navy}}>💰 ตรวจสอบการชำระค่าเทอม</div>
         <div style={{fontSize:12,color:C.g400,marginTop:3}}>รายการรอตรวจสอบ {payments.length} รายการ</div>
+        {profile?.role==="admin"&&<button type="button" aria-expanded={staffSection==="reminder-report"} onClick={()=>setStaffSection(s=>s==="reminder-report"?"manage":"reminder-report")} style={{marginTop:10,padding:"8px 12px",border:`1px solid ${C.g200}`,borderRadius:8,background:C.g50,color:C.navy,fontWeight:800}}>รายงานแจ้งเตือน 09.00 น.</button>}
       </div>
+      {profile?.role==="admin"&&staffSection==="reminder-report"&&<DailyTuitionNotificationReport token={token}/>}
       {error&&<div style={{background:C.redL,color:C.red,borderRadius:10,padding:12,fontSize:13,fontWeight:700}}>{error}</div>}
       {addItemMessage&&<div role="status" style={{background:C.greenL,color:C.green,borderRadius:8,padding:12,fontSize:13,fontWeight:700}}>{addItemMessage}</div>}
       {cashMessage&&<div role="status" style={{background:C.greenL,color:C.green,padding:12,borderRadius:8,fontSize:13,fontWeight:700}}>{cashMessage}</div>}
