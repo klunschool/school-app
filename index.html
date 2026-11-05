@@ -45,12 +45,12 @@ async function sbFetch(path,options={}){
     });
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||res.statusText);}
     if(parseCount){
-      const data=res.status===204?null:await res.json();
+      const data=res.status===204||fetchOptions.method==="HEAD"?null:await res.json();
       const range=res.headers.get("content-range")||"";
       const count=Number(range.split("/")[1]);
       return {data,count:Number.isFinite(count)?count:null};
     }
-    return res.status===204?null:res.json();
+    return res.status===204?null:await res.json();
   }catch(e){
     if(e.name==="AbortError")throw new Error(tx("ระบบใช้เวลานานเกินไป กรุณาตรวจเน็ตหรือรันไฟล์ตั้งค่า Supabase ให้ครบ","Request timed out. Check the connection or Supabase setup."));
     throw e;
@@ -2225,19 +2225,24 @@ function AdminStudentManagement({token}){
   const [editing,setEditing]=useState(null);
   const [photoDraft,setPhotoDraft]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [loadError,setLoadError]=useState(false);
   const [busy,setBusy]=useState("");
   const load=useCallback(async()=>{
-    setLoading(true);
+    setLoading(true);setLoadError(false);
+    try{
     const [cls,stu]=await Promise.all([
-      sbFetch("classes?select=id,name&order=id.asc",{token}).catch(()=>[]),
-      sbFetch("students?select=id,full_name,student_no,class_id,student_id_no,photo_path,classes(name)&order=class_id.asc,student_no.asc",{token}).catch(()=>[])
+      sbFetch("classes?select=id,name&order=id.asc",{token}),
+      sbFetch("students?select=id,full_name,student_no,class_id,student_id_no,photo_path,classes(name)&order=class_id.asc,student_no.asc",{token})
     ]);
     const sortedClasses=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
     const sortedStudents=[...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)||String(a.full_name).localeCompare(String(b.full_name),"th"));
-    setClasses(sortedClasses);setStudents(sortedStudents);setLoading(false);
+    setClasses(sortedClasses);setStudents(sortedStudents);
+    }catch(e){setLoadError(true);}
+    finally{setLoading(false);}
   },[token]);
   useEffect(()=>{load();},[load]);
   if(loading)return <Spin/>;
+  if(loadError)return <div role="alert" style={{padding:16,color:C.navy}}>โหลดรายชื่อนักเรียนไม่สำเร็จ <button type="button" onClick={load}>ลองใหม่</button></div>;
   const fromStudents=students.filter(s=>String(s.class_id)===String(fromClass));
   const deleteList=students.filter(s=>{
     const q=query.trim().toLowerCase();
@@ -3566,8 +3571,10 @@ function AdminStorageUsage({token,compact=false,onOpen}){
 }
 
 function TeacherHomeView({token,profile,setPage,role,email}){
-  const [students,setStudents]=useState([]);const [ann,setAnn]=useState([]);const [loading,setLoading]=useState(true);
-  const [studentCount,setStudentCount]=useState(0);
+  const [ann,setAnn]=useState([]);
+  const [studentCount,setStudentCount]=useState(null);
+  const [homeError,setHomeError]=useState(false);
+  const [homeAttempt,setHomeAttempt]=useState(0);
   const [talkUnread,setTalkUnread]=useState(0);
   const [talkUnreadError,setTalkUnreadError]=useState("");
   const [parentRequestCount,setParentRequestCount]=useState(0);
@@ -3587,44 +3594,50 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   },[token,profile.id,role]);
   useEffect(()=>{
     let timer=null;
+    let active=true;
+    let pending=false;
     let lastStudentIds=[];
     const refreshTalkUnread=async(stuIds=lastStudentIds)=>{
+      if(!active||pending)return;
+      pending=true;
+      try{
       lastStudentIds=stuIds||[];
       if(role==="admin"){
         try{
           const summary=await sbFetch("rpc/get_admin_chat_unread",{method:"POST",token,body:"{}"});
           if(!Number.isFinite(Number(summary?.total)))throw new Error("Invalid unread count");
-          setTalkUnread(Number(summary.total));setTalkUnreadError("");
-        }catch(e){setTalkUnreadError("โหลดจำนวนข้อความที่แอดมินยังไม่อ่านไม่สำเร็จ");}
+          if(active){setTalkUnread(Number(summary.total));setTalkUnreadError("");}
+        }catch(e){if(active)setTalkUnreadError("โหลดจำนวนข้อความที่แอดมินยังไม่อ่านไม่สำเร็จ");}
         return;
       }
       if(!lastStudentIds.length){setTalkUnread(0);return;}
       const unread=await sbFetch(`parent_teacher_messages?student_id=in.(${lastStudentIds.join(",")})&parent_id=not.is.null&teacher_read_at=is.null&select=id`,{token}).catch(()=>[]);
-      setTalkUnread((unread||[]).length);
+      if(active)setTalkUnread((unread||[]).length);
+      }finally{pending=false;}
     };
     const load=async()=>{
-      try{
-        const a=await sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).catch(()=>[]);setAnn(a||[]);
-        const tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token}).catch(()=>[]);
-        const ids=tc?.length>0?tc.map(t=>t.class_id).join(","):null;
-        const stu=ids?await sbFetch(`students?class_id=in.(${ids})&select=*,classes(name)&order=student_no.asc`,{token}).catch(()=>[]):await sbFetch("students?select=*,classes(name)&order=student_no.asc",{token}).catch(()=>[]);
-        setStudents(stu||[]);
-        if(role==="admin"){
-          const countRows=await sbFetch("students?select=id",{token,headers:{Prefer:"count=exact"},parseCount:true}).catch(()=>({count:(stu||[]).length}));
-          setStudentCount(Number(countRows?.count ?? (stu||[]).length));
-          const requests=await sbFetch("rpc/list_parent_link_requests",{method:"POST",token,body:"{}"}).catch(()=>[]);
-          setParentRequestCount((requests||[]).filter(r=>r.status==="pending").length);
-        }else{
-          setStudentCount((stu||[]).length);
-          setParentRequestCount(0);
-        }
-        const stuIds=(stu||[]).map(s=>s.id).filter(Boolean);
-        await refreshTalkUnread(stuIds);
+      setHomeError(false);
+      const showError=()=>{if(active)setHomeError(true);};
+      sbFetch("announcements?select=*&order=pinned.desc,created_at.desc&limit=3",{token}).then(a=>{if(active)setAnn(a||[]);}).catch(showError);
+      if(role==="admin"){
+        sbFetch("students?select=id&limit=1",{token,method:"HEAD",headers:{Prefer:"count=exact"},parseCount:true}).then(r=>{if(active)setStudentCount(r.count);}).catch(showError);
+        sbFetch("rpc/list_parent_link_requests",{method:"POST",token,body:"{}"}).then(r=>{if(active)setParentRequestCount((r||[]).filter(x=>x.status==="pending").length);}).catch(showError);
+        refreshTalkUnread();
         timer=setInterval(()=>refreshTalkUnread(),10000);
-      }catch(e){}finally{setLoading(false);}
+        return;
+      }
+      try{
+        const tc=await sbFetch(`teacher_class?teacher_id=eq.${profile.id}&select=class_id`,{token});
+        const ids=(tc||[]).map(t=>t.class_id).join(",");
+        const stu=await sbFetch(ids?`students?class_id=in.(${ids})&select=id`:"students?select=id",{token});
+        if(!active)return;
+        setStudentCount((stu||[]).length);
+        refreshTalkUnread((stu||[]).map(s=>s.id).filter(Boolean));
+        timer=setInterval(()=>refreshTalkUnread(),10000);
+      }catch(e){showError();}
     };load();
-    return()=>{if(timer)clearInterval(timer);};
-  },[token,profile.id]);
+    return()=>{active=false;if(timer)clearInterval(timer);};
+  },[token,profile.id,role,homeAttempt]);
   const isDirector=String(email||"").toLowerCase()==="director@klunschool.com";
   let menus=[
     {id:"scan",icon:"📷",label:tx("สแกนเข้า-ออก","Scan in/out"),bg:`linear-gradient(135deg,${C.navy},${C.navyL})`,action:()=>window.open("./scanner.html","_self")},
@@ -3652,9 +3665,9 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(role==="admin")menus.push({id:"storage-usage",icon:"💾",label:tx("พื้นที่ใช้งาน","Storage usage"),bg:C.green,action:()=>setPage("storage-usage")});
   if(role==="teacher"||role==="teacher_parent")menus=menus.filter(item=>item.id!=="assessment");
   if(isDirector)menus=menus.filter(item=>!["att","grade"].includes(item.id));
-  if(loading)return <Spin/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {homeError&&<div role="status" style={{padding:12,color:C.navy}}>โหลดข้อมูลหน้าหลักบางส่วนไม่สำเร็จ <button type="button" onClick={()=>setHomeAttempt(n=>n+1)}>ลองใหม่</button></div>}
       {tuitionPendingCount>0&&<button onClick={()=>setPage("tuition")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.yellow}`,borderRadius:8,background:C.yellowL,color:C.navy,fontSize:14,fontWeight:800,lineHeight:1.6}}>🔔 มีหลักฐานชำระค่าเทอมรอตรวจ {tuitionPendingCount} รายการ</button>}
       {tuitionPendingError&&<div role="status" style={{fontSize:12,color:C.red}}>{tuitionPendingError}</div>}
       {role==="admin"&&talkUnread>0&&<button onClick={()=>setPage("talk")} style={{width:"100%",textAlign:"left",padding:12,border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,color:C.navy,fontWeight:800}}>ข้อความที่แอดมินยังไม่ได้อ่าน {talkUnread} ข้อความ</button>}
@@ -3672,7 +3685,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
           </div>
         </div>
         <div style={{display:"flex",gap:10}}>
-          {[{v:studentCount,l:"นักเรียน",i:"👩‍🎓"},{v:ann.length,l:"ประกาศ",i:"📢"}].map(x=>(
+          {[{v:studentCount??"-",l:"นักเรียน",i:"👩‍🎓"},{v:ann.length,l:"ประกาศ",i:"📢"}].map(x=>(
             <div key={x.l} style={{background:"rgba(255,255,255,0.12)",borderRadius:12,padding:"8px 14px",flex:1}}>
               <div style={{color:C.white,fontSize:18,fontWeight:800}}>{x.i} {x.v}</div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>{x.l}</div>
