@@ -1424,6 +1424,77 @@ function formatTuitionMessage(body){
     return match?`${match[1]} ${line}`:line;
   }).join("\n");
 }
+function TuitionReminderReport({token}){
+  const [date,setDate]=useState(localDateISO);
+  const [offset,setOffset]=useState(0);
+  const [reload,setReload]=useState(0);
+  const [report,setReport]=useState(null);
+  const [error,setError]=useState(false);
+  useEffect(()=>{
+    let active=true;
+    setReport(null);setError(false);
+    sbFetch("rpc/get_daily_reminder_message_report",{method:"POST",token,body:JSON.stringify({p_date:date,p_offset:offset})})
+      .then(data=>{if(active)setReport(data);}).catch(()=>{if(active)setError(true);});
+    return()=>{active=false;};
+  },[token,date,offset,reload]);
+  const statuses={succeeded:"ทำงานสำเร็จ",failed:"ทำงานไม่สำเร็จ",running:"กำลังทำงาน",starting:"กำลังเริ่มทำงาน"};
+  return <section style={{background:C.white,borderRadius:8,padding:16}}>
+    <h2 style={{fontSize:16,color:C.navy,margin:"0 0 12px"}}>รายงานข้อความเตือนค่าเทอม</h2>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <input type="date" aria-label="วันที่ส่งข้อความ" value={date} max={localDateISO()} onChange={e=>{if(e.target.value){setDate(e.target.value);setOffset(0);}}}/>
+      <button type="button" title="รีเฟรชรายงาน" aria-label="รีเฟรชรายงาน" onClick={()=>setReload(x=>x+1)} style={{width:40,height:36}}>↻</button>
+    </div>
+    {error?<p role="alert" style={{color:C.red}}>โหลดรายงานไม่สำเร็จ กรุณาลองใหม่</p>:!report?<p role="status">กำลังโหลดรายงาน…</p>:<>
+      <p style={{fontSize:13}}>รอบ 09.00 น.: {report.run?statuses[report.run.status]||report.run.status:"ไม่พบประวัติการทำงาน"}{report.run?.started_at?" · "+formatThaiDateTime(report.run.started_at):""}</p>
+      <p style={{fontSize:13,fontWeight:800}}>ส่งเข้าแอป {report.created} · อ่านแล้ว {report.read} · ยังไม่อ่าน {report.unread}</p>
+      {!report.messages.length&&<p style={{fontSize:13,color:C.g600}}>ไม่พบข้อความเตือนที่ส่งในวันที่เลือก</p>}
+      {report.messages.map(m=><details key={m.id} style={{borderTop:`1px solid ${C.g200}`,padding:"10px 0",fontSize:13}}>
+        <summary style={{cursor:"pointer",overflowWrap:"anywhere"}}><strong>{m.full_name} · {m.classroom||"-"}</strong> · {m.read_at?"อ่านแล้ว":"ยังไม่อ่าน"}</summary>
+        <div style={{margin:"6px 0"}}>ส่ง {formatThaiDateTime(m.created_at)}{m.read_at?" · อ่าน "+formatThaiDateTime(m.read_at):""}</div>
+        <div style={{whiteSpace:"pre-line",overflowWrap:"anywhere",background:C.g50,padding:10,borderRadius:8}}>{formatTuitionMessage(m.body)}</div>
+      </details>)}
+      {report.created>25&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+        <button type="button" disabled={offset===0} onClick={()=>setOffset(v=>Math.max(0,v-25))}>ก่อนหน้า</button>
+        <span>{Math.floor(offset/25)+1} / {Math.ceil(report.created/25)}</span>
+        <button type="button" disabled={offset+25>=report.created} onClick={()=>setOffset(v=>v+25)}>ถัดไป</button>
+      </div>}
+    </>}
+  </section>;
+}
+
+function TuitionReminderPreview({token}){
+  const [showReport,setShowReport]=useState(true);
+  const sample=[
+    "แจ้งเตือนค่าเทอมประจำวัน",
+    "เรียน ผู้ปกครองของนักเรียนตัวอย่าง",
+    "ภาคเรียนที่ 2/2569",
+    "ยอดรวม: 10,000.00 บาท",
+    "ชำระแล้ว (ตรวจสอบแล้ว): 4,000.00 บาท",
+    "คงเหลือตามบัญชี: 6,000.00 บาท",
+    "สถานะ: ชำระบางส่วน",
+    "ครบกำหนด: 30/11/2569",
+    "",
+    "ขอความกรุณาผู้ปกครองชำระยอดคงเหลือ 6,000.00 บาท และแนบสลิปในเมนูค่าเทอมค่ะ",
+    "หากชำระแล้ว กรุณาส่งหลักฐานแทนการชำระซ้ำ"
+  ].join("\n");
+  return <div style={{display:"grid",gap:10}}>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button type="button" aria-pressed={showReport} onClick={()=>setShowReport(true)} style={{padding:8,color:showReport?C.white:C.navy,background:showReport?C.navy:C.white,border:0,borderRadius:8}}>ข้อความจริง / รายงาน</button>
+      <button type="button" aria-pressed={!showReport} onClick={()=>setShowReport(false)} style={{padding:8,color:!showReport?C.white:C.navy,background:!showReport?C.navy:C.white,border:0,borderRadius:8}}>ดูตัวอย่าง</button>
+    </div>
+    {showReport?<TuitionReminderReport token={token}/>:<section style={{background:C.white,borderRadius:8,padding:16}}>
+    <h2 style={{fontSize:16,color:C.navy,margin:"0 0 6px"}}>ตัวอย่างข้อความเตือนค่าเทอม</h2>
+    <p style={{fontSize:13,color:C.g600,margin:"0 0 12px"}}>รอบ 09.00 น. · ข้อมูลสมมติ</p>
+    <div style={{maxWidth:"82%",background:C.g100,color:C.g900,borderRadius:"16px 16px 16px 4px",padding:"9px 12px"}}>
+      <div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:6}}>ฝ่ายการเงิน · ข้อความอัตโนมัติ</div>
+      <div style={{fontSize:14,lineHeight:1.8,whiteSpace:"pre-line",overflowWrap:"anywhere"}}>{formatTuitionMessage(sample)}</div>
+      <div style={{marginTop:8,fontSize:12,fontWeight:700,color:C.navy}}>ดูค่าเทอม / ส่งหลักฐาน</div>
+      <div style={{fontSize:10,color:C.g600,marginTop:4}}>09.00 น.</div>
+    </div>
+  </section>}
+  </div>;
+}
+
 const CHAT_IMAGE_EXT={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"};
 function ChatPrivateImage({path,token,viewerId}){
   const [open,setOpen]=useState(false);
@@ -1457,6 +1528,12 @@ function ChatPrivateImage({path,token,viewerId}){
 }
 
 function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null}){
+  const [chatNow,setChatNow]=useState(Date.now);
+  useEffect(()=>{
+    if(!["parent","teacher_parent"].includes(profile.role))return;
+    const timer=setInterval(()=>setChatNow(Date.now()),1000);
+    return()=>clearInterval(timer);
+  },[profile.role]);
   const [attachment,setAttachment]=useState(null);
   const [messageBusy,setMessageBusy]=useState(false);
   const [editMessage,setEditMessage]=useState(null);
@@ -1673,7 +1750,8 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
             const mine=!m.isTuition&&m.sender_id===profile.id;
             const canChange=mine&&(isStaff
               ?m.teacher_id===profile.id&&["admin","teacher","teacher_parent"].includes(role)
-              :m.parent_id===profile.id&&["parent","teacher_parent"].includes(profile.role));
+              :m.parent_id===profile.id&&["parent","teacher_parent"].includes(profile.role)
+                &&new Date(m.created_at).getTime()+15*60*1000>chatNow);
             const editing=canChange&&editMessage?.id===m.id;
             return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
               <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
@@ -3409,6 +3487,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
     {id:"leave",icon:"📝",label:tx("รับใบลา","Leave requests"),bg:"linear-gradient(135deg,#ea580c,#f97316)",action:()=>setPage("leave")},
     {id:"exam",icon:"📋",label:tx("ผลสอบ","Exam results"),bg:"linear-gradient(135deg,#0369a1,#0ea5e9)",action:()=>setPage("exam")},
     {id:"tuition",icon:"💰",label:tx("ค่าเทอม","Tuition"),bg:"linear-gradient(135deg,#b45309,#d97706)",badge:tuitionPendingCount,action:()=>setPage("tuition")},
+    ...(["teacher","teacher_parent","admin"].includes(role)?[{id:"tuition-reminder-preview",icon:"🔔",label:"รายงานเตือนค่าเทอม",bg:"#0f766e",action:()=>setPage("tuition-reminder-preview")}]:[]),
   ];
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-usage",icon:"📱",label:tx("เข้าใช้งานผู้ปกครอง","Parent usage"),bg:"linear-gradient(135deg,#2563eb,#06b6d4)",action:()=>setPage("parent-usage")});
@@ -3859,6 +3938,7 @@ function App(){
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
       if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
+      if(subPage==="tuition-reminder-preview"&&["teacher","teacher_parent","admin"].includes(profile.role))return <div><Back/><TuitionReminderPreview token={token}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="assessment"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><AssessmentCenter token={token} profile={profile} role={role}/></div>;
       if(subPage==="exam")return <div><Back/><ComingSoonView/></div>;
