@@ -2018,6 +2018,32 @@ function HomeroomParentReport({token,profile,role}){
   );
 }
 
+const PRIMARY_ADMIN_EMAIL="klun.school@gmail.com";
+function SecondaryAdminSignIns({token}){
+  const [rows,setRows]=useState(null);
+  const [error,setError]=useState(false);
+  const [reload,setReload]=useState(0);
+  useEffect(()=>{
+    let active=true;
+    setRows(null);setError(false);
+    sbFetch("rpc/get_secondary_admin_signins",{method:"POST",token,body:"{}"})
+      .then(data=>{if(active)setRows(data||[]);})
+      .catch(()=>{if(active)setError(true);});
+    return()=>{active=false;};
+  },[token,reload]);
+  return <section style={{background:C.white,borderRadius:8,padding:16}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+      <h2 style={{fontSize:16,color:C.navy,margin:0}}>การเข้าใช้แอดมิน</h2>
+      <button type="button" aria-label="รีเฟรชการเข้าใช้" title="รีเฟรชการเข้าใช้" onClick={()=>setReload(n=>n+1)} style={{width:40,height:40}}>↻</button>
+    </div>
+    {error?<p role="alert" style={{color:C.red}}>เปิดรายงานไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่</p>:rows===null?<p role="status">กำลังโหลด…</p>:!rows.length?<p>ไม่พบบัญชีแอดมินคนที่ 2 และ 3</p>:rows.map(row=><div key={row.email} style={{padding:"12px 0",borderBottom:`1px solid ${C.g200}`,overflowWrap:"anywhere"}}>
+      <strong>{row.full_name||row.email}</strong>
+      <div style={{fontSize:12,color:C.g600}}>{row.email}</div>
+      <div style={{fontSize:13,marginTop:4}}>เข้าสู่ระบบล่าสุด: {row.last_sign_in_at?formatThaiDateTime(row.last_sign_in_at):"ยังไม่มีบันทึก"}</div>
+    </div>)}
+  </section>;
+}
+
 function ParentUsageReport({token}){
   const [rows,setRows]=useState([]);
   const [classId,setClassId]=useState("all");
@@ -3491,6 +3517,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   ];
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-usage",icon:"📱",label:tx("เข้าใช้งานผู้ปกครอง","Parent usage"),bg:"linear-gradient(135deg,#2563eb,#06b6d4)",action:()=>setPage("parent-usage")});
+  if(role==="admin"&&email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)menus.push({id:"admin-signins",icon:"🕐",label:"การเข้าใช้แอดมิน",bg:"#0f766e",action:()=>setPage("admin-signins")});
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
@@ -3945,6 +3972,7 @@ function App(){
       if(subPage==="talk")return <div><Back/><ParentTeacherTalk token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-usage"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><ParentUsageReport token={token}/></div>;
+      if(subPage==="admin-signins"&&role==="admin"&&session?.user?.email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)return <div><Back/><SecondaryAdminSignIns token={token}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token} profile={profile}/></div>;
       if(subPage==="supply-list"&&role==="admin")return <div><Back/><SupplyListPage/></div>;
