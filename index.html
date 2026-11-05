@@ -558,6 +558,7 @@ function DailyTuitionNotificationReport({token}){
 function SupportContact({onBack}){
   const [email,setEmail]=useState("");
   const [verification,setVerification]=useState({parent:"",student:"",classroom:"",studentId:""});
+  const [shareVerification,setShareVerification]=useState(false);
   const [category,setCategory]=useState("login");
   const [message,setMessage]=useState("");
   const [loading,setLoading]=useState(false);
@@ -576,8 +577,9 @@ function SupportContact({onBack}){
         setError(tx("กรอกข้อมูลยืนยันทั้ง 4 ช่อง และใส่เลขประจำตัว 13 หลัก","Complete all four verification fields and enter a 13-digit ID."));
         return;
       }
-      await notifyTelegramSupport({email:cleanEmail,category,message:cleanMessage,...(provided?{verification:details}:{})});
+      await notifyTelegramSupport({email:cleanEmail,category,message:cleanMessage,...(provided?{verification:details,shareVerification}: {})});
       setVerification({parent:"",student:"",classroom:"",studentId:""});
+      setShareVerification(false);
       setSent(true);
     }catch(e){setError(e.message);}
     finally{setLoading(false);}
@@ -616,9 +618,13 @@ function SupportContact({onBack}){
                 onChange={e=>{const value=e.target.value;setVerification(prev=>({...prev,[key]:value}));}}
                 style={{...fieldStyle,marginBottom:key==="studentId"?0:8}}/>)}
             </fieldset>
+            {Object.values(verification).some(v=>v.trim())&&<label style={{display:"flex",alignItems:"flex-start",gap:8,color:C.white,fontSize:13,marginBottom:12}}>
+              <input type="checkbox" checked={shareVerification} onChange={e=>setShareVerification(e.target.checked)}/>
+              <span>{tx("ส่งชื่อผู้ปกครอง ชื่อนักเรียน ชั้น/ห้อง และเลข 4 หลักท้าย ให้เจ้าหน้าที่ผ่านกลุ่ม Telegram","Share parent and student names, classroom, and the last 4 digits with staff via Telegram.")}</span>
+            </label>}
             <textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={500} rows="4" placeholder={tx("อธิบายปัญหาโดยย่อ","Briefly describe the issue")} style={{...fieldStyle,resize:"vertical"}}/>
             <div style={{background:"rgba(240,208,96,0.13)",border:"1px solid rgba(240,208,96,0.35)",borderRadius:9,padding:"9px 11px",color:C.goldL,fontSize:12,lineHeight:1.5,marginBottom:12}}>
-              {tx("ห้ามส่งรหัสผ่าน ใส่เลขประจำตัวในช่องยืนยันเท่านั้น ข้อมูลยืนยันไม่ถูกส่งไป Telegram","Never include passwords. Enter the ID only in its verification field. Verification details are not sent to Telegram.")}
+              {tx("ห้ามส่งรหัสผ่านหรือเลขประจำตัวในรายละเอียดปัญหา เลข 13 หลักใช้ตรวจในระบบเท่านั้น","Never include passwords or student IDs in the issue details. The full 13-digit ID is used only for verification.")}
             </div>
             {error&&<div style={{background:"rgba(220,38,38,0.2)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13,marginBottom:12}}>⚠️ {error}</div>}
             <button onClick={send} disabled={loading} style={{width:"100%",padding:13,border:"none",borderRadius:12,background:loading?C.g400:C.goldL,color:C.navyD,fontWeight:800,fontSize:15,cursor:"pointer"}}>
