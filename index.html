@@ -557,6 +557,7 @@ function DailyTuitionNotificationReport({token}){
 
 function SupportContact({onBack}){
   const [email,setEmail]=useState("");
+  const [verification,setVerification]=useState({parent:"",student:"",classroom:"",studentId:""});
   const [category,setCategory]=useState("login");
   const [message,setMessage]=useState("");
   const [loading,setLoading]=useState(false);
@@ -569,7 +570,14 @@ function SupportContact({onBack}){
     if(/\d{13}/.test(cleanMessage))return setError(tx("กรุณาอย่าส่งเลขประจำตัวนักเรียน 13 หลัก","Do not include the student's 13-digit ID"));
     setLoading(true);setError("");
     try{
-      await notifyTelegramSupport({email:cleanEmail,category,message:cleanMessage});
+      const details=Object.fromEntries(Object.entries(verification).map(([key,value])=>[key,value.trim()]));
+      const provided=Object.values(details).some(Boolean);
+      if(provided&&(!Object.values(details).every(Boolean)||!/^\d{13}$/.test(details.studentId))){
+        setError(tx("กรอกข้อมูลยืนยันทั้ง 4 ช่อง และใส่เลขประจำตัว 13 หลัก","Complete all four verification fields and enter a 13-digit ID."));
+        return;
+      }
+      await notifyTelegramSupport({email:cleanEmail,category,message:cleanMessage,...(provided?{verification:details}:{})});
+      setVerification({parent:"",student:"",classroom:"",studentId:""});
       setSent(true);
     }catch(e){setError(e.message);}
     finally{setLoading(false);}
@@ -596,9 +604,21 @@ function SupportContact({onBack}){
               <option value="student-linked">{tx("นักเรียนถูกผูกกับบัญชีอื่น","Student linked to another account")}</option>
               <option value="other">{tx("ปัญหาอื่น ๆ","Other issue")}</option>
             </select>
+            <fieldset style={{minWidth:0,margin:"0 0 12px",padding:10,border:"1px solid rgba(255,255,255,0.25)",borderRadius:8}}>
+              <legend style={{color:C.white,fontSize:13,fontWeight:700}}>{tx("ข้อมูลยืนยันบัญชีที่ผูกไว้ (ถ้ามี)","Linked account verification (optional)")}</legend>
+              {[
+                ["parent",tx("ชื่อ–นามสกุลผู้ปกครอง","Parent full name"),120],
+                ["student",tx("ชื่อ–นามสกุลนักเรียนตามระบบ","Student full name as registered"),120],
+                ["classroom",tx("ชั้น/ห้อง เช่น ป.5/3","Classroom, e.g. ป.5/3"),30],
+                ["studentId",tx("เลขประจำตัวนักเรียน 13 หลัก","13-digit student ID"),13]
+              ].map(([key,label,length])=><input key={key} aria-label={label} placeholder={label} value={verification[key]}
+                inputMode={key==="studentId"?"numeric":undefined} autoComplete="off" maxLength={length}
+                onChange={e=>{const value=e.target.value;setVerification(prev=>({...prev,[key]:value}));}}
+                style={{...fieldStyle,marginBottom:key==="studentId"?0:8}}/>)}
+            </fieldset>
             <textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={500} rows="4" placeholder={tx("อธิบายปัญหาโดยย่อ","Briefly describe the issue")} style={{...fieldStyle,resize:"vertical"}}/>
             <div style={{background:"rgba(240,208,96,0.13)",border:"1px solid rgba(240,208,96,0.35)",borderRadius:9,padding:"9px 11px",color:C.goldL,fontSize:12,lineHeight:1.5,marginBottom:12}}>
-              {tx("เพื่อความปลอดภัย ห้ามส่งรหัสผ่านหรือเลขประจำตัวนักเรียน 13 หลัก","For security, never send a password or a student's 13-digit ID.")}
+              {tx("ห้ามส่งรหัสผ่าน ใส่เลขประจำตัวในช่องยืนยันเท่านั้น ข้อมูลยืนยันไม่ถูกส่งไป Telegram","Never include passwords. Enter the ID only in its verification field. Verification details are not sent to Telegram.")}
             </div>
             {error&&<div style={{background:"rgba(220,38,38,0.2)",borderRadius:8,padding:"8px 12px",color:"#fca5a5",fontSize:13,marginBottom:12}}>⚠️ {error}</div>}
             <button onClick={send} disabled={loading} style={{width:"100%",padding:13,border:"none",borderRadius:12,background:loading?C.g400:C.goldL,color:C.navyD,fontWeight:800,fontSize:15,cursor:"pointer"}}>
