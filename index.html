@@ -199,19 +199,41 @@ function storageObjectPath(path){
   return String(path||"").split("/").map(encodeURIComponent).join("/");
 }
 async function uploadStudentPhoto(file,path,token){
-  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/student-photos/${storageObjectPath(path)}`,{
-    method:"POST",
-    headers:{
-      apikey:SUPABASE_KEY,
-      Authorization:`Bearer ${token}`,
-      "Content-Type":file.type||"image/jpeg",
-      "x-upsert":"true"
-    },
-    body:file,
-  });
-  const d=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(d.message||"อัปโหลดรูปนักเรียนไม่สำเร็จ");
-  return d;
+  for(let attempt=0;attempt<2;attempt++){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),25000);
+    try{
+      // Reuse the same object path if the first upload reached Storage.
+      const res=await fetch(`${SUPABASE_URL}/storage/v1/object/student-photos/${storageObjectPath(path)}`,{
+        method:"POST",
+        headers:{
+          apikey:SUPABASE_KEY,
+          Authorization:`Bearer ${token}`,
+          "Content-Type":file.type||"image/jpeg",
+          "x-upsert":"true"
+        },
+        body:file,
+        signal:controller.signal,
+      });
+      if(res.ok)return;
+      const status=res.status;
+      if(status===408||status>=500){
+        if(attempt===1)throw new Error(`ระบบเก็บรูปตอบช้าหรือไม่พร้อมใช้งาน (HTTP ${status}) กรุณาลองใหม่ภายหลัง`);
+      }else if(status===413){
+        throw new Error("ไฟล์รูปเกินขนาดที่ระบบเก็บรูปรองรับ");
+      }else if(status===401||status===403){
+        throw new Error("ไม่มีสิทธิ์อัปโหลดรูป กรุณาเข้าสู่ระบบใหม่ด้วยบัญชีผู้ดูแล");
+      }else{
+        throw new Error(`อัปโหลดรูปนักเรียนไม่สำเร็จ (HTTP ${status})`);
+      }
+    }catch(error){
+      if(error.name!=="AbortError"&&!(error instanceof TypeError))throw error;
+      if(attempt===1)throw new Error("ติดต่อระบบเก็บรูปไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่");
+    }finally{
+      clearTimeout(timer);
+    }
+    await new Promise(resolve=>setTimeout(resolve,1500));
+  }
 }
 function blobToImage(blob){
   return new Promise((resolve,reject)=>{
