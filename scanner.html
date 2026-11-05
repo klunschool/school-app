@@ -82,6 +82,7 @@ function App(){
   const scanLockRef=useRef(false);
   const recentScanRef=useRef({value:"",time:0});
   const audioContextRef=useRef(null);
+  const scanOnly=auth?.profile?.role==="scanner"||String(auth?.session?.user?.email||"").toLowerCase()==="scan.appklunschool@gmail.com";
 
   async function prepareAudio(){
     try{
@@ -132,6 +133,26 @@ function App(){
 
   useEffect(()=>{
     if(!auth)return;
+    if(scanOnly){setStudents([]);return;}
+    if(auth.profile.role==="admin"){
+      let active=true;
+      const token=auth.session.access_token;
+      setStudents([]);
+      const loadSchool=async()=>{
+        const rows=[];
+        let lastId=0;
+        for(;;){
+          const page=await sbFetch(`students?id=gt.${lastId}&select=id,full_name,student_no,student_id_no,classes(name)&order=id.asc&limit=500`,{token});
+          if(!active)return;
+          if(!page?.length)break;
+          rows.push(...page);
+          lastId=page[page.length-1].id;
+        }
+        setStudents(rows);
+      };
+      loadSchool().catch(()=>{if(active)setLastScan({success:false,message:"โหลดรายชื่อนักเรียนไม่สำเร็จ กรุณาเปิดหน้านี้ใหม่"});});
+      return()=>{active=false;};
+    }
     // ดึงเฉพาะนักเรียนในห้องที่ครูดูแล
     sbFetch(`teacher_class?teacher_id=eq.${auth.profile.id}&select=class_id`,{token:auth.session.access_token})
       .then(async(tc)=>{
@@ -140,16 +161,17 @@ function App(){
         const stu=await sbFetch(`students?class_id=in.(${classIds})&select=id,full_name,student_no,student_id_no,classes(name)&order=student_no.asc`,{token:auth.session.access_token});
         setStudents(stu||[]);
       });
-  },[auth]);
+  },[auth,scanOnly]);
 
   const loadLogs=useCallback(()=>{
     if(!auth)return;
+    if(scanOnly){setLogs([]);return;}
     setLoadingLogs(true);
     const start=new Date();start.setHours(0,0,0,0);
     const end=new Date(start);end.setDate(end.getDate()+1);
     sbFetch(`checkin_log?scanned_at=gte.${start.toISOString()}&scanned_at=lt.${end.toISOString()}&select=*,students(full_name,student_no)&order=scanned_at.desc&limit=50`,{token:auth.session.access_token})
       .then(l=>setLogs(l||[])).finally(()=>setLoadingLogs(false));
-  },[auth]);
+  },[auth,scanOnly]);
 
   useEffect(()=>{
     if(tab==="log")loadLogs();
@@ -246,6 +268,13 @@ function App(){
   }
 
   async function handleScan(text){
+    if(scanOnly){
+      try{
+        const result=await sbFetch("rpc/record_school_scan",{method:"POST",token:auth.session.access_token,body:JSON.stringify({p_code:String(text||"").trim(),p_type:scanMode})});
+        setLastScan({success:true,type:scanMode,student:result.student,time:new Date().toLocaleTimeString("th-TH",{timeStyle:"short"})});
+        return true;
+      }catch(e){setLastScan({success:false,message:"บันทึกไม่สำเร็จ: "+e.message});return false;}
+    }
     // QR Code format: "student:123"
     // รองรับทั้งเลข 13 หลัก และรูปแบบ student:id
     let student=null;
@@ -311,7 +340,7 @@ function App(){
       <div style={{padding:16}}>
         {/* Tab */}
         <div style={{display:"flex",background:C.gray100,borderRadius:12,padding:4,marginBottom:16,gap:4}}>
-          {[{id:"scan",label:"📷 สแกน"},{id:"qrcodes",label:"🪪 QR นักเรียน"},{id:"log",label:"📋 ประวัติ"}].map(t=>(
+          {(scanOnly?[{id:"scan",label:"📷 สแกนทั้งโรงเรียน"}]:[{id:"scan",label:"📷 สแกน"},{id:"qrcodes",label:"🪪 QR นักเรียน"},{id:"log",label:"📋 ประวัติ"}]).map(t=>(
             <button key={t.id} onClick={()=>{stopScanner();setTab(t.id);}} style={{flex:1,padding:"8px 4px",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:tab===t.id?C.white:"transparent",color:tab===t.id?C.primary:C.gray600,boxShadow:tab===t.id?"0 1px 4px rgba(0,0,0,0.1)":"none",transition:"all 0.15s"}}>
               {t.label}
             </button>
