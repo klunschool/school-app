@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v98-parent-chat-actions";
+const CACHE = "school-app-github-v99-private-chat-images";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",

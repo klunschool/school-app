@@ -1424,7 +1424,40 @@ function formatTuitionMessage(body){
     return match?`${match[1]} ${line}`:line;
   }).join("\n");
 }
+const CHAT_IMAGE_EXT={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"};
+function ChatPrivateImage({path,token,viewerId}){
+  const [open,setOpen]=useState(false);
+  const [image,setImage]=useState(null);
+  const [error,setError]=useState(false);
+  useEffect(()=>{
+    if(!open)return;
+    const controller=new AbortController();
+    let objectUrl;
+    setImage(null);setError(false);
+    fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/school-chat-images/${storageObjectPath(path)}`,{
+      signal:controller.signal,cache:"no-store",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`}
+    }).then(res=>{if(!res.ok)throw new Error();return res.blob();}).then(blob=>{
+      if(controller.signal.aborted)return;
+      if(!CHAT_IMAGE_EXT[blob.type])throw new Error();
+      objectUrl=URL.createObjectURL(blob);
+      setImage({url:objectUrl,time:formatThaiDateTime(new Date().toISOString())});
+    }).catch(()=>{if(!controller.signal.aborted)setError(true);});
+    return()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[open,path,token]);
+  return <div style={{marginTop:6}}>
+    <button type="button" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>{open?"ปิดรูป":"เปิดรูปแนบ"}</button>
+    {open&&(error?<div role="alert">เปิดรูปไม่ได้หรือไม่มีสิทธิ์</div>:!image?<div role="status">กำลังโหลดรูป...</div>:
+      <div style={{position:"relative",marginTop:6,overflow:"hidden",borderRadius:8}}>
+        <img src={image.url} alt="รูปแนบในบทสนทนา" style={{display:"block",width:"100%",height:"auto"}}/>
+        <div style={{position:"absolute",left:4,right:4,top:"50%",transform:"translateY(-50%)",textAlign:"center",background:"rgba(0,0,0,.52)",color:"white",fontSize:11,padding:4,pointerEvents:"none",overflowWrap:"anywhere"}}>
+          ผู้ดู {String(viewerId).slice(-8).toUpperCase()} · {image.time}
+        </div>
+      </div>)}
+  </div>;
+}
+
 function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null}){
+  const [attachment,setAttachment]=useState(null);
   const [messageBusy,setMessageBusy]=useState(false);
   const [editMessage,setEditMessage]=useState(null);
   async function changeTeacherMessage(message,action){
@@ -1563,13 +1596,23 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
     return()=>{active=false;clearInterval(timer);};
   },[token,selected?.id,profile.id,isStaff,canReadTuition,role]);
   async function send(){
-    if(!selected?.id||!body.trim())return;
+    const file=attachment?.studentId===selected?.id?attachment?.file:null;
+    if(sending||!selected?.id||(!body.trim()&&!file))return;
     setSending(true);
     try{
-      const payload={student_id:selected.id,sender_id:profile.id,body:body.trim()};
+      const payload={student_id:selected.id,sender_id:profile.id,body:body.trim()||"รูปภาพ"};
+      if(file){
+        const path=`${profile.id}/${crypto.randomUUID()}.${CHAT_IMAGE_EXT[file.type]}`;
+        const res=await fetch(`${SUPABASE_URL}/storage/v1/object/school-chat-images/${storageObjectPath(path)}`,{
+          method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":file.type,"Cache-Control":"no-store"},body:file
+        });
+        if(!res.ok)throw new Error("แนบรูปไม่สำเร็จ กรุณาลองใหม่");
+        payload.image_path=path;
+      }
       if(!isStaff)payload.parent_id=profile.id;
       if(isStaff)payload.teacher_id=profile.id;
       await sbFetch("parent_teacher_messages",{method:"POST",token,body:JSON.stringify(payload)});
+      setAttachment(null);
       setBody("");
       const rows=await sbFetch(`parent_teacher_messages?student_id=eq.${selected.id}&select=*&order=created_at.asc`,{token});
       followLatestRef.current=true;
@@ -1636,6 +1679,7 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
               <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
                 {m.isTuition&&<div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:6}}>ฝ่ายการเงิน · ข้อความอัตโนมัติ</div>}
                 <div style={{fontSize:14,lineHeight:m.isTuition?1.8:1.55,whiteSpace:"pre-line",wordBreak:"break-word"}}>{m.isTuition?formatTuitionMessage(m.body):m.body}</div>
+                {!m.isTuition&&m.image_path&&<ChatPrivateImage key={m.image_path} path={m.image_path} token={token} viewerId={profile.id}/>}
                 {m.isTuition&&!isStaff&&onOpenTuition&&<button onClick={onOpenTuition} style={{marginTop:8,padding:"7px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูค่าเทอม / ส่งหลักฐาน</button>}
                 <div style={{fontSize:10,opacity:0.65,marginTop:4,textAlign:mine?"right":"left"}}>{formatThaiDateTime(m.created_at)}</div>
                 {canChange&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
@@ -1649,9 +1693,20 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
             </div>;
           })}
         </div>
+        <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center",flexWrap:"wrap"}}>
+          <label style={{fontSize:13,color:C.navy,fontWeight:800}}>แนบรูป
+            <input key={selected.id} type="file" aria-label="แนบรูป JPG PNG หรือ WebP ไม่เกิน 3 MB" accept="image/jpeg,image/png,image/webp" disabled={sending} style={{display:"block",maxWidth:"100%",fontSize:12}} onChange={e=>{
+              const file=e.target.files?.[0];e.target.value="";
+              if(!file)return;
+              if(!CHAT_IMAGE_EXT[file.type]||file.size===0||file.size>3145728){alert("เลือกรูป JPG, PNG หรือ WebP ขนาดไม่เกิน 3 MB");return;}
+              setAttachment({studentId:selected.id,file});
+            }}/>
+          </label>
+          {attachment?.studentId===selected.id&&<div style={{fontSize:12,overflowWrap:"anywhere"}}>{attachment.file.name} <button type="button" disabled={sending} onClick={()=>setAttachment(null)}>เอารูปออก</button></div>}
+        </div>
         <div style={{display:"flex",gap:8,marginTop:12}}>
-          <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="พิมพ์ข้อความ..." style={{flex:1,minHeight:44,maxHeight:120,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,resize:"vertical",outline:"none",fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}/>
-          <button onClick={send} disabled={sending||!body.trim()} style={{alignSelf:"stretch",border:"none",background:sending||!body.trim()?C.g400:C.navy,color:C.white,borderRadius:10,padding:"0 14px",fontWeight:800,cursor:"pointer"}}>{sending?"...":"ส่ง"}</button>
+          <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="พิมพ์ข้อความ..." style={{flex:1,minWidth:0,minHeight:44,maxHeight:120,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,resize:"vertical",outline:"none",fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}/>
+          <button onClick={send} disabled={sending||(!body.trim()&&attachment?.studentId!==selected.id)} style={{alignSelf:"stretch",border:"none",background:sending||(!body.trim()&&attachment?.studentId!==selected.id)?C.g400:C.navy,color:C.white,borderRadius:10,padding:"0 14px",fontWeight:800,cursor:"pointer"}}>{sending?"...":"ส่ง"}</button>
         </div>
       </div>:<div style={{background:C.white,borderRadius:16}}><Empty icon="👧" msg="เลือกนักเรียนเพื่อดูข้อความ"/></div>}
     </div>
