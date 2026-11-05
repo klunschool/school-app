@@ -1425,6 +1425,21 @@ function formatTuitionMessage(body){
   }).join("\n");
 }
 function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null}){
+  const [messageBusy,setMessageBusy]=useState(false);
+  const [editMessage,setEditMessage]=useState(null);
+  async function changeTeacherMessage(message,action){
+    if(messageBusy)return;
+    const body=action==="edit"?editMessage?.body.trim():null;
+    if(action==="edit"&&!body)return;
+    if(action==="withdraw"&&!window.confirm("ยกเลิกข้อความนี้สำหรับทุกคนหรือไม่?"))return;
+    setMessageBusy(true);
+    try{
+      await sbFetch("rpc/manage_own_teacher_message",{method:"POST",token,body:JSON.stringify({p_message_id:message.id,p_action:action,p_body:body})});
+      setMessages(rows=>action==="withdraw"?rows.filter(row=>row.id!==message.id):rows.map(row=>row.id===message.id?{...row,body}:row));
+      setEditMessage(null);
+    }catch(e){alert(e.message);}
+    finally{setMessageBusy(false);}
+  }
   const [students,setStudents]=useState([]);
   const [talkClass,setTalkClass]=useState("all");
   const [selected,setSelected]=useState(student||null);
@@ -1613,12 +1628,21 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
         <div ref={messageScrollRef} aria-label="ข้อความสนทนา" onScroll={e=>{const panel=e.currentTarget;followLatestRef.current=panel.scrollHeight-panel.clientHeight-panel.scrollTop<48;}} style={{minHeight:220,maxHeight:430,overflowY:"auto",overflowAnchor:"none",paddingRight:2}}>
           {conversation.length===0?<Empty icon="💬" msg="ยังไม่มีข้อความ เริ่มสนทนาได้เลย"/>:conversation.map(m=>{
             const mine=!m.isTuition&&m.sender_id===profile.id;
+            const canChange=mine&&m.teacher_id===profile.id&&["admin","teacher","teacher_parent"].includes(role);
+            const editing=canChange&&editMessage?.id===m.id;
             return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
               <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
                 {m.isTuition&&<div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:6}}>ฝ่ายการเงิน · ข้อความอัตโนมัติ</div>}
                 <div style={{fontSize:14,lineHeight:m.isTuition?1.8:1.55,whiteSpace:"pre-line",wordBreak:"break-word"}}>{m.isTuition?formatTuitionMessage(m.body):m.body}</div>
                 {m.isTuition&&!isStaff&&onOpenTuition&&<button onClick={onOpenTuition} style={{marginTop:8,padding:"7px 10px",border:`1px solid ${C.navy}`,borderRadius:8,color:C.navy,background:C.white,fontWeight:700}}>ดูค่าเทอม / ส่งหลักฐาน</button>}
                 <div style={{fontSize:10,opacity:0.65,marginTop:4,textAlign:mine?"right":"left"}}>{formatThaiDateTime(m.created_at)}</div>
+                {canChange&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                  {editing?<><textarea aria-label="แก้ไขข้อความ" rows={3} maxLength={2000} value={editMessage.body} onChange={e=>setEditMessage({id:m.id,body:e.target.value})} style={{width:"100%",minWidth:0}}/>
+                    <button disabled={messageBusy||!editMessage.body.trim()} onClick={()=>changeTeacherMessage(m,"edit")}>บันทึก</button>
+                    <button disabled={messageBusy} onClick={()=>setEditMessage(null)}>ปิดการแก้ไข</button></>:<>
+                    <button disabled={messageBusy} onClick={()=>setEditMessage({id:m.id,body:m.body})}>แก้ไข</button>
+                    <button disabled={messageBusy} onClick={()=>changeTeacherMessage(m,"withdraw")}>ยกเลิกข้อความ</button></>}
+                </div>}
               </div>
             </div>;
           })}
