@@ -2019,6 +2019,76 @@ function HomeroomParentReport({token,profile,role}){
 }
 
 const PRIMARY_ADMIN_EMAIL="klun.school@gmail.com";
+const TRACKED_ADMIN_EMAILS=["adminklunschool2@gmail.com","adminklunschool3@gmail.com"];
+const ADMIN_ACTIVITY_PAGES={home:"หน้าหลัก",checkin:"ประวัติสแกน",attendance:"เช็กชื่อ","timetable-admin":"ตารางสอน","storage-usage":"พื้นที่ใช้งาน",grades:"คะแนน",leave:"รับใบลา",tuition:"ค่าเทอม","tuition-reminder-preview":"รายงานเตือนค่าเทอม",announce:"ประกาศ",assessment:"ประเมิน",exam:"ผลสอบ",talk:"พูดคุย","parent-report":"ผู้ปกครอง","parent-usage":"เข้าใช้งานผู้ปกครอง","student-management":"จัดการนักเรียน",reports:"รายงาน","supply-list":"คลังสินค้า",password:"เปลี่ยนรหัสผ่าน","parent-requests":"คำขอผู้ปกครอง",settings:"ตั้งค่า"};
+function useSecondaryAdminActivity(auth,page){
+  const token=auth?.session?.access_token;
+  const enabled=auth?.profile?.role==="admin"&&TRACKED_ADMIN_EMAILS.includes(auth?.session?.user?.email?.toLowerCase());
+  useEffect(()=>{
+    if(!enabled||!token||!Object.hasOwn(ADMIN_ACTIVITY_PAGES,page))return;
+    let id=null,day=null,seconds=0,last=performance.now(),lastAction=last,lastSent=-1;
+    let visible=document.visibilityState==="visible";
+    const send=(keepalive=false)=>{
+      if(!id)return;
+      const value=Math.floor(seconds);
+      if(value===lastSent&&!keepalive)return;
+      lastSent=value;
+      fetch(`${SUPABASE_URL}/rest/v1/rpc/record_secondary_admin_page_visit`,{
+        method:"POST",keepalive,headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+        body:JSON.stringify({p_id:id,p_page:page,p_seconds:value})
+      }).then(r=>{if(!r.ok&&lastSent===value)lastSent=-1;}).catch(()=>{if(lastSent===value)lastSent=-1;});
+    };
+    const tick=()=>{
+      const now=performance.now();
+      if(visible&&id)seconds+=Math.max(0,Math.min(now,lastAction+120000,last+20000)-last)/1000;
+      last=now;
+      if(!visible)return;
+      const today=localDateISO();
+      if(day!==today){send(true);id=crypto.randomUUID();day=today;seconds=0;lastSent=-1;}
+    };
+    const activity=()=>{tick();lastAction=performance.now();};
+    const visibility=()=>{tick();visible=document.visibilityState==="visible";if(visible)activity();send(true);};
+    const flush=()=>{tick();send(true);};
+    activity();send();
+    const timer=setInterval(()=>{tick();if(visible)send();},15000);
+    document.addEventListener("visibilitychange",visibility);
+    document.addEventListener("pointerdown",activity);
+    document.addEventListener("keydown",activity);
+    document.addEventListener("scroll",activity,true);
+    window.addEventListener("pagehide",flush);
+    return()=>{clearInterval(timer);flush();document.removeEventListener("visibilitychange",visibility);document.removeEventListener("pointerdown",activity);document.removeEventListener("keydown",activity);document.removeEventListener("scroll",activity,true);window.removeEventListener("pagehide",flush);};
+  },[enabled,token,page]);
+}
+
+function SecondaryAdminActivity({token}){
+  const [date,setDate]=useState(localDateISO),[offset,setOffset]=useState(0),[reload,setReload]=useState(0);
+  const [data,setData]=useState(null),[error,setError]=useState(false);
+  useEffect(()=>{
+    let active=true;
+    setData(null);setError(false);
+    sbFetch("rpc/get_secondary_admin_activity",{method:"POST",token,body:JSON.stringify({p_date:date,p_offset:offset})})
+      .then(r=>{if(active)setData(r);}).catch(()=>{if(active)setError(true);});
+    return()=>{active=false;};
+  },[token,date,offset,reload]);
+  const duration=n=>`${Math.floor((n||0)/60)} นาที ${(n||0)%60} วินาที`;
+  return <div style={{borderTop:`1px solid ${C.g200}`,paddingTop:12,marginTop:12}}>
+    <h3 style={{fontSize:14,margin:"0 0 8px"}}>ประวัติเปิดเมนู</h3>
+    <input aria-label="วันที่เข้าใช้" type="date" value={date} max={localDateISO()} onChange={e=>{if(e.target.value){setDate(e.target.value);setOffset(0);}}}/>
+    <button type="button" title="รีเฟรชประวัติ" aria-label="รีเฟรชประวัติ" onClick={()=>setReload(n=>n+1)} style={{width:36,height:36,marginLeft:8}}>↻</button>
+    {error?<p role="alert">โหลดประวัติไม่สำเร็จ</p>:!data?<p role="status">กำลังโหลด…</p>:<>
+      {TRACKED_ADMIN_EMAILS.map((email,i)=><p key={email} style={{fontSize:13}}>แอดมินคนที่ {i+2}: <strong>{duration(data.totals[email])}</strong></p>)}
+      {data.visits.length===0?<p style={{fontSize:13}}>ไม่มีประวัติในวันที่เลือก</p>:data.visits.map(v=><div key={v.id} style={{borderTop:`1px solid ${C.g200}`,padding:"8px 0",fontSize:13}}>
+        <strong>{ADMIN_ACTIVITY_PAGES[v.page]||v.page}</strong> · แอดมินคนที่ {TRACKED_ADMIN_EMAILS.indexOf(v.email.toLowerCase())+2}
+        <div style={{fontSize:12,color:C.g600}}>{formatThaiDateTime(v.opened_at)} · {duration(v.active_seconds)}</div>
+      </div>)}
+      {data.count>25&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <button disabled={!offset} onClick={()=>setOffset(v=>v-25)}>ก่อนหน้า</button>
+        <span>{Math.floor(offset/25)+1} / {Math.ceil(data.count/25)}</span>
+        <button disabled={offset+25>=data.count} onClick={()=>setOffset(v=>v+25)}>ถัดไป</button>
+      </div>}
+    </>}
+  </div>;
+}
 function SecondaryAdminSignIns({token}){
   const [rows,setRows]=useState(null);
   const [error,setError]=useState(false);
@@ -2041,6 +2111,7 @@ function SecondaryAdminSignIns({token}){
       <div style={{fontSize:12,color:C.g600}}>{row.email}</div>
       <div style={{fontSize:13,marginTop:4}}>เข้าสู่ระบบล่าสุด: {row.last_sign_in_at?formatThaiDateTime(row.last_sign_in_at):"ยังไม่มีบันทึก"}</div>
     </div>)}
+    <SecondaryAdminActivity token={token}/>
   </section>;
 }
 
@@ -3894,6 +3965,7 @@ function App(){
   const [subPage,setSubPage]=useState(null);
   const [activeRole,setActiveRole]=useState(null);
   const [lang,setLang]=useState(()=>localStorage.getItem("school_lang")||"th");
+  useSecondaryAdminActivity(auth,subPage||tab);
 
   useEffect(()=>{
     let cancelled=false;
