@@ -2398,7 +2398,8 @@ function AdminStudentManagement({token}){
 }
 
 // ======= TUITION PHASE 1 =======
-function TuitionView({token,profile,student}){
+function TuitionView({token,profile,student,canAdjustItems=false}){
+  const [itemChange,setItemChange]=useState(null);
   const isStaff=["finance","admin"].includes(profile?.role);
   const isTeacher=!student&&["teacher","teacher_parent"].includes(profile?.role);
   const [studentInfo,setStudentInfo]=useState(student||null);
@@ -2799,12 +2800,37 @@ function TuitionView({token,profile,student}){
       <div style={{display:"flex",gap:8}}><button disabled={!!busy||!!existingReceipt} onClick={recordCash} style={{flex:1,padding:10,border:0,borderRadius:8,background:existingReceipt?C.g400:C.green,color:C.white,fontWeight:800}}>{busy==="cash"?"กำลังบันทึก...":"ยืนยันรับเงินสด"}</button><button disabled={!!busy} onClick={()=>setCashForm(null)} style={{padding:10,border:`1px solid ${C.g200}`,borderRadius:8,background:C.white}}>ยกเลิก</button></div>
     </div>;
   };
+  async function saveItemChange(){
+    if(!canAdjustItems||!itemChange||busy||!itemChange.reason.trim())return;
+    const {invoiceId,itemId,action,description,amount,reason}=itemChange;
+    if(action==="remove"&&!window.confirm("ลบรายการนี้ออกจากยอดค้างชำระหรือไม่?"))return;
+    setBusy("item-change");setError("");
+    try{
+      await sbFetch("rpc/adjust_unpaid_invoice_item",{method:"POST",token,body:JSON.stringify({p_invoice_id:invoiceId,p_item_id:itemId,p_action:action,p_description:description,p_amount:action==="edit"?Number(amount):null,p_reason:reason})});
+      setItemChange(null);
+      await load();
+    }catch(e){setError(e.message);}
+    finally{setBusy("");}
+  }
   const invoiceItems=inv=>{
     const rows=itemBalances.filter(i=>i.invoice_id===inv.id);
     const outstanding=rows.filter(i=>Number(i.remaining_amount)>0);
     const unassigned=Math.max(0,Number(inv.paid_amount)-rows.reduce((n,i)=>n+Number(i.paid_amount),0));
     const itemRow=item=><div key={item.item_id} style={{fontSize:12,padding:"6px 0",borderBottom:`1px solid ${C.g100}`}}>
       <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:12}}><div><b style={{overflowWrap:"anywhere"}}>{item.description}</b><div style={{color:C.green,marginTop:3}}>ระบุชำระแล้ว ฿{money(item.paid_amount)}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:11,color:C.g600}}>คงเหลือปัจจุบัน</div><b style={{whiteSpace:"nowrap",color:C.navy}}>฿{money(item.remaining_amount)}</b><div style={{fontSize:11,color:C.g400,marginTop:3}}>ยอดเดิม ฿{money(item.amount)}</div></div></div>
+      {canAdjustItems&&Number(inv.paid_amount)===0&&!["paid","cancelled"].includes(inv.status)&&<div style={{marginTop:6}}>
+        {itemChange?.itemId===item.item_id?<div style={{display:"grid",gap:6}}>
+          {itemChange.action==="edit"&&<>
+            <input aria-label="ชื่อรายการ" maxLength={160} value={itemChange.description} onChange={e=>setItemChange(x=>({...x,description:e.target.value}))}/>
+            <input aria-label="จำนวนเงิน" type="number" min="0.01" step="0.01" value={itemChange.amount} onChange={e=>setItemChange(x=>({...x,amount:e.target.value}))}/>
+          </>}
+          <input aria-label="เหตุผล" placeholder="เหตุผลที่แก้ไขหรือลบ" maxLength={300} value={itemChange.reason} onChange={e=>setItemChange(x=>({...x,reason:e.target.value}))}/>
+          <div style={{display:"flex",gap:6}}><button disabled={!!busy||!itemChange.reason.trim()} onClick={saveItemChange}>{itemChange.action==="remove"?"ยืนยันลบ":"บันทึก"}</button><button disabled={!!busy} onClick={()=>setItemChange(null)}>ยกเลิก</button></div>
+        </div>:<div style={{display:"flex",gap:6}}>
+          <button disabled={!!busy} onClick={()=>setItemChange({invoiceId:inv.id,itemId:item.item_id,action:"edit",description:item.description,amount:item.amount,reason:""})}>แก้ไข</button>
+          <button disabled={!!busy||outstanding.length<2} onClick={()=>setItemChange({invoiceId:inv.id,itemId:item.item_id,action:"remove",description:item.description,reason:""})} style={{color:C.red}}>ลบ</button>
+        </div>}
+      </div>}
     </div>;
     return <div style={{marginTop:8}}>
       <div aria-label="รายการค้างชำระ">{outstanding.map(itemRow)}</div>
@@ -4037,7 +4063,7 @@ function App(){
       if(subPage==="storage-usage"&&role==="admin")return <div><Back/><AdminStorageUsage token={token}/></div>;
       if(subPage==="grades")return <div><Back/><Grades token={token} isTeacher={role==="teacher"}/></div>;
       if(subPage==="leave")return <div><Back/>{role==="parent"?<LeaveForm token={token} profile={profile} initStudents={[]}/>:<LeaveRequestsView token={token} profile={profile} readOnly={isDirector}/>}</div>;
-      if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile}/></div>;
+      if(subPage==="tuition")return <div><Back/><TuitionView token={token} profile={profile} canAdjustItems={role==="admin"&&session?.user?.email?.toLowerCase()===PRIMARY_ADMIN_EMAIL}/></div>;
       if(subPage==="tuition-reminder-preview"&&["teacher","teacher_parent","admin"].includes(profile.role))return <div><Back/><TuitionReminderPreview token={token}/></div>;
       if(subPage==="announce")return <div><Back/><Announce token={token} profile={profile}/></div>;
       if(subPage==="assessment"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><AssessmentCenter token={token} profile={profile} role={role}/></div>;
