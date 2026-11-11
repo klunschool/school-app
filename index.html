@@ -3813,8 +3813,8 @@ function ParentLinkApprovals({token,readOnly=false}){
 }
 
 // ======= PARENT VIEW =======
-function canViewParentGuide(role,email){
-  return role==="parent"&&String(email||"").trim().toLowerCase()==="paweena.jaoho@gmail.com";
+function canViewParentGuide(role){
+  return role==="parent";
 }
 const PARENT_GUIDE_TOPICS=[
   {id:"start",title:"เริ่มต้นใช้งาน",steps:[
@@ -4162,7 +4162,7 @@ function App(){
   const rawRole=profile?.role;
   const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
   const hasDualRole=rawRole==="teacher_parent";
-  const parentGuideAllowed=canViewParentGuide(role,session?.user?.email);
+  const parentGuideAllowed=canViewParentGuide(role);
   const isDirector=String(session?.user?.email||"").toLowerCase()==="director@klunschool.com";
   const scanOnly=profile?.role==="scanner"||String(session?.user?.email||"").toLowerCase()==="scan.appklunschool@gmail.com";
   if(scanOnly)return <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",padding:20,background:C.bg}}>
@@ -4287,6 +4287,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 
