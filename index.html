@@ -3813,6 +3813,84 @@ function ParentLinkApprovals({token,readOnly=false}){
 }
 
 // ======= PARENT VIEW =======
+function canViewParentGuide(role,email){
+  return role==="parent"&&String(email||"").trim().toLowerCase()==="paweena.jaoho@gmail.com";
+}
+const PARENT_GUIDE_TOPICS=[
+  {id:"start",title:"เริ่มต้นใช้งาน",steps:[
+    "เปิดแอปโรงเรียนผ่านเบราว์เซอร์ แล้วเลือกลงทะเบียนผู้ปกครองหากยังไม่มีบัญชี",
+    "กรอกข้อมูลของตนเอง ตรวจอีเมลให้ถูกต้อง หากได้รับอีเมลยืนยัน ให้กดยืนยันตามลิงก์ก่อนเข้าสู่ระบบ",
+    "เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่ลงทะเบียนไว้",
+    "บนมือถือ สามารถใช้เมนูของเบราว์เซอร์เพิ่มแอปไว้ที่หน้าจอหลักได้"
+  ]},
+  {id:"children",title:"ผูกบัญชีกับบุตรหลาน",steps:[
+    "ที่หน้าหลัก เลือกเพิ่มบุตรหลาน แล้วกรอกเลขประจำตัวนักเรียน 13 หลักให้ครบ",
+    "กดส่งคำขอ และรอโรงเรียนตรวจสอบความสัมพันธ์ก่อนอนุมัติ",
+    "หากยังรออนุมัติหรือคำขอไม่ผ่าน ให้ติดต่อผู้ดูแลระบบ ไม่ต้องสมัครบัญชีซ้ำ",
+    "เมื่อมีบุตรหลานหลายคน ให้เลือกชื่อนักเรียนที่ต้องการก่อนเปิดดูข้อมูลแต่ละเมนู"
+  ]},
+  {id:"attendance",title:"การมาเรียนและประวัติสแกน",steps:[
+    "เลือกบุตรหลาน แล้วเปิดการมาเรียนเพื่อดูสถานะตามวันที่ หรือเปิดประวัติสแกนเพื่อดูเวลาเข้าและออก",
+    "มา คือมีบันทึกการมาเรียน สาย คือมีบันทึกเข้าหลังเกณฑ์ของโรงเรียน ลา คือใบลาได้รับอนุมัติแล้ว",
+    "การยังไม่มีข้อมูลสแกนไม่ใช่หลักฐานว่าเด็กขาดเรียนเสมอไป ข้อมูลขึ้นอยู่กับวันเริ่มนับและการตรวจสอบของโรงเรียน",
+    "หากลืมบัตร บัตรชำรุด หรือเวลาไม่ตรงกับความเป็นจริง ให้แจ้งครูประจำชั้นพร้อมวันที่ที่ต้องการตรวจสอบ"
+  ]},
+  {id:"leave",title:"การแจ้งลา",steps:[
+    "เลือกเมนูแจ้งลาเรียนของบุตรหลานที่ต้องการ",
+    "กรอกวันที่ ประเภทการลา และเหตุผลตามช่องที่ปรากฏ ตรวจข้อมูลก่อนส่ง",
+    "ตรวจสถานะคำขอหลังส่ง การส่งคำขอยังไม่ถือว่าได้รับอนุมัติ",
+    "หากใบลาอนุมัติแล้ว ระบบรายงานการมาเรียนจะแสดงลาในวันที่ได้รับอนุมัติ หากต้องแก้ข้อมูลให้ติดต่อครู"
+  ]},
+  {id:"tuition",title:"ค่าเทอมและการชำระเงิน",steps:[
+    "เปิดค่าเทอม ตรวจชื่อนักเรียน ใบแจ้งยอด รายการค่าใช้จ่าย และยอดคงเหลือปัจจุบัน",
+    "เมื่อโอนเงินแล้ว เลือกแจ้งชำระเงิน กรอกจำนวนเงิน และแนบสลิปที่อ่านได้ชัดเจน ระบุรายการที่ชำระหากแบบฟอร์มมีช่องให้เลือก",
+    "ส่งหลักฐานเพียงครั้งเดียว แล้วรอผลตรวจ ยอดที่รอตรวจยังไม่ใช่ยอดที่โรงเรียนอนุมัติแล้ว อย่าชำระส่วนเดิมซ้ำเพียงเพราะยอดยังไม่เปลี่ยน",
+    "หากไม่ผ่าน ให้ดูเหตุผลและติดต่อครูก่อนส่งหลักฐานที่แก้ไขแล้ว",
+    "หากชำระเงินสดที่โรงเรียน ให้เก็บใบเสร็จ เจ้าหน้าที่จะบันทึกการรับเงิน เมื่อบันทึกสำเร็จจึงตรวจยอดและประวัติในแอปอีกครั้ง"
+  ]},
+  {id:"chat",title:"พูดคุยกับครูและแนบรูป",steps:[
+    "เลือกบุตรหลาน แล้วเปิดพูดคุยเพื่อสนทนาเรื่องของนักเรียนคนนั้น",
+    "พิมพ์รายละเอียดพร้อมวันที่ที่เกี่ยวข้อง แล้วกดส่ง ตรวจชื่อบุตรหลานก่อนส่งทุกครั้ง",
+    "หากต้องการส่งรูป ให้เลือกแนบรูป ตรวจภาพที่เลือก แล้วส่งตามแบบฟอร์ม",
+    "ส่งเฉพาะข้อมูลที่จำเป็น ห้ามส่งรหัสผ่านหรือ OTP และควรส่งสลิปผ่านเมนูค่าเทอมเพื่อให้ตรวจสอบการชำระได้ถูกต้อง"
+  ]},
+  {id:"school",title:"ข่าวสาร ตารางสอน และผลการเรียน",steps:[
+    "เปิดประกาศเพื่ออ่านข่าวสารจากโรงเรียน",
+    "เลือกบุตรหลาน แล้วเปิดตารางสอนเพื่อดูตารางที่โรงเรียนเผยแพร่ให้ห้องของลูก",
+    "เปิดผลการเรียนเพื่อดูข้อมูลที่โรงเรียนบันทึกและเปิดให้เข้าถึง หากยังไม่มีข้อมูล ให้สอบถามครูประจำชั้น",
+    "บางเมนูอาจยังไม่เปิดใช้งานหรือยังไม่มีข้อมูล ไม่จำเป็นต้องลงทะเบียนใหม่"
+  ]},
+  {id:"help",title:"ปัญหาที่พบบ่อยและติดต่อผู้ดูแล",steps:[
+    "ลืมรหัสผ่าน: เลือกลืมรหัสผ่านที่หน้าเข้าสู่ระบบ ตรวจกล่องอีเมลและจดหมายขยะ แล้วทำตามลิงก์ที่ได้รับ",
+    "ไม่พบข้อมูลลูก: ตรวจสถานะคำขอผูกบัญชี และตรวจว่าเข้าสู่ระบบด้วยอีเมลที่ใช้ส่งคำขอ",
+    "อัปโหลดรูปหรือสลิปไม่สำเร็จ: ตรวจอินเทอร์เน็ต ชนิดและขนาดไฟล์ตามที่หน้าจอกำหนด ก่อนส่งซ้ำให้ตรวจว่ามีรายการถูกบันทึกไปแล้วหรือไม่",
+    "หากยังแก้ไม่ได้ ให้ใช้ติดต่อผู้ดูแลระบบที่หน้าเข้าสู่ระบบ ระบุอีเมลติดต่อกลับ อาการ วันเวลา และข้อมูลยืนยันเฉพาะในช่องที่ระบบจัดไว้ ห้ามส่งรหัสผ่านหรือ OTP"
+  ]},
+  {id:"security",title:"ความปลอดภัยของบัญชี",steps:[
+    "ใช้บัญชีของตนเองและตั้งรหัสผ่านที่ไม่ซ้ำกับบริการอื่น ไม่เปิดเผยรหัสผ่านหรือ OTP ให้ผู้อื่น",
+    "เมื่อใช้โทรศัพท์หรือคอมพิวเตอร์ร่วมกับผู้อื่น ให้ออกจากระบบทุกครั้งหลังใช้งาน",
+    "ไม่ส่งต่อภาพหรือข้อมูลส่วนตัวของเด็กคนอื่น หากพบข้อมูลที่ไม่เกี่ยวกับบุตรหลานของตน ให้หยุดเปิดดูและแจ้งโรงเรียน",
+    "หากสงสัยว่าบัญชีถูกผู้อื่นใช้งาน ให้เปลี่ยนรหัสผ่านและติดต่อผู้ดูแลระบบ"
+  ]}
+];
+function ParentUsageGuide(){
+  const [query,setQuery]=useState("");
+  const search=query.trim().toLocaleLowerCase("th");
+  const topics=PARENT_GUIDE_TOPICS.filter(t=>`${t.title} ${t.steps.join(" ")}`.toLocaleLowerCase("th").includes(search));
+  return <section aria-labelledby="parent-guide-heading" style={{background:C.white,padding:16,color:C.navy,overflowWrap:"anywhere"}}>
+    <header style={{display:"flex",gap:12,alignItems:"center",marginBottom:16}}>
+      <img src="./icon-192.png" alt="ตราโรงเรียนกลั่นวิทยา" width="44" height="44" style={{flexShrink:0,objectFit:"contain"}}/>
+      <div style={{minWidth:0}}><h1 id="parent-guide-heading" style={{fontSize:20,lineHeight:1.5,margin:0}}>คู่มือผู้ปกครอง</h1>
+        <div style={{fontSize:12,color:C.g600}}>อัปเดต 11 พฤศจิกายน 2569</div></div>
+    </header>
+    <label htmlFor="parent-guide-search" style={{display:"block",fontSize:13,fontWeight:700,marginBottom:6}}>ค้นหาหัวข้อ</label>
+    <input id="parent-guide-search" type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="เช่น ใบลา ค่าเทอม ผูกบัญชี" style={{boxSizing:"border-box",width:"100%",minWidth:0,padding:"11px 12px",border:`1px solid ${C.g200}`,borderRadius:8,fontSize:16,fontFamily:"inherit",marginBottom:12}}/>
+    {topics.length===0?<p role="status" style={{fontSize:14,color:C.g600}}>ไม่พบหัวข้อที่ค้นหา</p>:topics.map(t=><details key={t.id} open={search?true:undefined} style={{borderBottom:`1px solid ${C.g200}`,padding:"12px 0"}}>
+      <summary style={{cursor:"pointer",fontSize:15,fontWeight:800,lineHeight:1.6,padding:"4px 0"}}>{t.title}</summary>
+      <ol style={{paddingLeft:22,margin:"12px 0 4px",fontSize:14,lineHeight:1.85,color:C.g700}}>{t.steps.map((step,i)=><li key={i} style={{paddingLeft:3,marginBottom:10}}>{step}</li>)}</ol>
+    </details>)}
+  </section>;
+}
 function ParentView({token,profile,userId}){
   const [children,setChildren]=useState([]);const [requests,setRequests]=useState([]);const [sel,setSel]=useState(null);const [info,setInfo]=useState(null);const [loading,setLoading]=useState(true);const [page,setPage]=useState("home");const [err,setErr]=useState("");
   const [adding,setAdding]=useState(false);const [childIdNo,setChildIdNo]=useState("");const [addBusy,setAddBusy]=useState(false);const [addMsg,setAddMsg]=useState("");const [reloadKey,setReloadKey]=useState(0);
@@ -4073,6 +4151,7 @@ function App(){
   const rawRole=profile?.role;
   const role=rawRole==="teacher_parent"?(activeRole||"teacher"):rawRole;
   const hasDualRole=rawRole==="teacher_parent";
+  const parentGuideAllowed=canViewParentGuide(role,session?.user?.email);
   const isDirector=String(session?.user?.email||"").toLowerCase()==="director@klunschool.com";
   const scanOnly=profile?.role==="scanner"||String(session?.user?.email||"").toLowerCase()==="scan.appklunschool@gmail.com";
   if(scanOnly)return <div style={{maxWidth:420,margin:"0 auto",minHeight:"100vh",padding:20,background:C.bg}}>
@@ -4096,6 +4175,7 @@ function App(){
     // sub pages
     if(subPage){
       const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← {tx("กลับ","Back")}</button>;
+      if(subPage==="parent-guide")return <div><Back/>{parentGuideAllowed&&<ParentUsageGuide/>}</div>;
       if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role} email={session?.user?.email}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="schedule"&&role==="teacher")return <div><Back/><TeacherSchedule token={token} profile={profile}/></div>;
@@ -4124,6 +4204,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
+        {parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",padding:"12px",marginBottom:12,border:`1px solid ${C.navy}`,borderRadius:8,background:C.white,color:C.navy,fontSize:14,fontWeight:800,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right"}}>›</span></button>}
         {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.3","Version 1.7.3")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
@@ -4142,7 +4223,7 @@ function App(){
     );
     if(tab==="home"){
       if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role} email={session?.user?.email}/>;
-      if(role==="parent")return <ParentView token={token} profile={profile} userId={session?.user?.id}/>;
+      if(role==="parent")return <div>{parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",padding:"12px",marginBottom:14,border:`1px solid ${C.navy}`,borderRadius:8,background:C.white,color:C.navy,fontSize:14,fontWeight:800,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right"}}>›</span></button>}<ParentView token={token} profile={profile} userId={session?.user?.id}/></div>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
     return null;
@@ -4195,4 +4276,5 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
