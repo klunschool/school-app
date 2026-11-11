@@ -335,6 +335,7 @@ async function notifyTelegramSupport(payload){
     method:"POST",
     headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},
     body:JSON.stringify(payload),
+    signal:AbortSignal.timeout(20000),
   });
   const d=await res.json().catch(()=>({}));
   if(!res.ok)throw new Error(d.error||tx("ส่งคำขอช่วยเหลือไม่สำเร็จ","Could not send support request"));
@@ -431,76 +432,64 @@ function filterAttendanceByRange(rows,range){
 }
 
 function ParentRegister({onBack}){
-  const [form,setForm]=useState({full_name:"",email:"",student_id_no:"",password:"",confirm:""});
+  const [form,setForm]=useState({email:"",parent:"",student:"",studentId:"",classroom:""});
   const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [sent,setSent]=useState(false);
-  const [studentMatch,setStudentMatch]=useState(null);const [studentLookup,setStudentLookup]=useState(false);
-  const inputStyle={width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${C.g200}`,fontSize:14,background:C.white,outline:"none"};
-  const set=(key,value)=>setForm(p=>({...p,[key]:value}));
-  useEffect(()=>{
-    let cancelled=false;
-    const studentIdNo=form.student_id_no.trim();
-    setStudentMatch(null);
-    if(!/^\d{13}$/.test(studentIdNo)){setStudentLookup(false);return()=>{cancelled=true;};}
-    setStudentLookup(true);
-    lookupStudentForRegistration(studentIdNo)
-      .then(result=>{if(!cancelled)setStudentMatch(result||{found:false});})
-      .catch(()=>{if(!cancelled)setStudentMatch({found:false,error:true});})
-      .finally(()=>{if(!cancelled)setStudentLookup(false);});
-    return()=>{cancelled=true;};
-  },[form.student_id_no]);
+  const submitting=React.useRef(false);
+  const set=(key,value)=>setForm(prev=>({...prev,[key]:value}));
+  const fields=[
+    ["email",tx("อีเมลสำหรับใช้งานและติดต่อกลับ","Email for your account and replies"),"email",160],
+    ["parent",tx("ชื่อ–นามสกุลผู้ปกครอง","Parent full name"),"text",120],
+    ["student",tx("ชื่อ–นามสกุลนักเรียน","Student full name"),"text",120],
+    ["studentId",tx("เลขประจำตัวนักเรียน 13 หลัก","13-digit student ID"),"text",13],
+    ["classroom",tx("ระดับชั้น/ห้อง เช่น ป.2/2","Classroom, e.g. ป.2/2"),"text",30]
+  ];
   async function submit(e){
-    e.preventDefault();setError("");
-    if(Object.values(form).some(v=>!String(v).trim()))return setError(tx("กรุณากรอกข้อมูลให้ครบ","Please complete all fields"));
-    if(!/^\d{13}$/.test(form.student_id_no))return setError(tx("กรุณากรอกเลขบัตรนักเรียนให้ครบ 13 หลัก","Enter the student's complete 13-digit ID number"));
-    if(studentLookup)return setError(tx("กำลังตรวจสอบข้อมูลนักเรียน กรุณารอสักครู่","Checking student information. Please wait."));
-    if(!studentMatch?.found)return setError(tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตรอีกครั้ง","Student not found. Check the ID number."));
-    if(form.password.length<8)return setError(tx("รหัสผ่านต้องมีอย่างน้อย 8 ตัว","Password must contain at least 8 characters"));
-    if(form.password!==form.confirm)return setError(tx("ยืนยันรหัสผ่านไม่ตรงกัน","Passwords do not match"));
-    setBusy(true);
+    e.preventDefault();if(submitting.current)return;
+    const details=Object.fromEntries(Object.entries(form).map(([key,value])=>[key,value.trim()]));
+    if(!Object.values(details).every(Boolean))return setError(tx("กรุณากรอกข้อมูลให้ครบทั้ง 5 ช่อง","Please complete all five fields"));
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email))return setError(tx("กรุณากรอกอีเมลให้ถูกต้อง","Enter a valid email address"));
+    if(!/^[0-9]{13}$/.test(details.studentId))return setError(tx("กรุณากรอกเลขประจำตัวนักเรียนให้ครบ 13 หลัก","Enter the complete 13-digit student ID"));
+    submitting.current=true;setBusy(true);setError("");
     try{
-      const existing=await checkExistingParentRegistration(form.email,form.student_id_no);
-      if(existing?.student_claimed)throw new Error(tx("นักเรียนคนนี้ลงทะเบียนผู้ปกครองแล้ว","This student already has a registered parent."));
-      if(existing?.email_exists)throw new Error(tx("อีเมลนี้ลงทะเบียนผู้ปกครองแล้ว กรุณากลับไปเข้าสู่ระบบ หากต้องการเพิ่มลูกให้เลือกเมนูเพิ่มบุตรหลาน","This email is already registered as a parent. Sign in and use Add child if needed."));
-      await signUpParent(form);setSent(true);
-    }
-    catch(e){setError(e.message);}
-    finally{setBusy(false);}
+      await notifyTelegramSupport({
+        email:details.email.toLowerCase(),category:"registration",requestType:"parent_registration",
+        message:"ขอให้เจ้าหน้าที่ตรวจสอบความสัมพันธ์และดำเนินการลงทะเบียนผู้ปกครอง",
+        verification:{parent:details.parent,student:details.student,classroom:details.classroom,studentId:details.studentId},
+        shareVerification:true
+      });
+      setSent(true);setForm({email:"",parent:"",student:"",studentId:"",classroom:""});
+    }catch{setError(tx("ส่งคำขอไม่สำเร็จ หรือยังยืนยันการส่งไม่ได้ กรุณาติดต่อผู้ดูแลก่อนส่งซ้ำ","Submission failed or could not be confirmed. Contact support before sending again."));}
+    finally{submitting.current=false;setBusy(false);}
   }
-  return(
-    <div style={{minHeight:"100vh",background:C.bg,padding:"24px 16px 40px"}}>
-      <div style={{maxWidth:420,margin:"0 auto"}}>
-        <button onClick={onBack} style={{border:"none",background:"transparent",color:C.navy,fontSize:14,cursor:"pointer",marginBottom:14}}>← {tx("กลับหน้าเข้าสู่ระบบ","Back to sign in")}</button>
-        <div style={{background:C.white,borderRadius:18,padding:20,boxShadow:"0 3px 14px rgba(15,35,71,0.1)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-            <img src="./icon-192.png" alt="" style={{width:46,height:46,objectFit:"contain"}}/>
-            <div><div style={{fontSize:18,fontWeight:800,color:C.navy}}>{tx("ลงทะเบียนผู้ปกครอง","Parent registration")}</div><div style={{fontSize:12,color:C.g400}}>{tx("ยืนยันอีเมลก่อนเริ่มใช้งาน","Email confirmation required")}</div></div>
-          </div>
-          {sent?(
-            <div style={{textAlign:"center",padding:"24px 8px"}}>
-              <div style={{fontSize:50}}>📧</div>
-              <div style={{fontSize:17,fontWeight:800,color:C.green,marginTop:10}}>{tx("ส่งอีเมลยืนยันแล้ว","Confirmation email sent")}</div>
-              <div style={{fontSize:13,color:C.g600,lineHeight:1.6,marginTop:8}}>{tx("กรุณาเปิดอีเมล กดลิงก์ยืนยัน แล้วกลับมาเข้าสู่ระบบ ระบบจะส่งคำขอให้ผู้ดูแลตรวจสอบก่อนผูกบัญชี","Open the email, confirm your address, then return and sign in. An administrator will review the link request.")}</div>
-              <button onClick={onBack} style={{marginTop:18,width:"100%",padding:11,border:"none",borderRadius:10,background:C.navy,color:C.white,fontWeight:800,cursor:"pointer"}}>{tx("ไปหน้าเข้าสู่ระบบ","Go to sign in")}</button>
-            </div>
-          ):(
-            <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10}}>
-              <input style={inputStyle} value={form.full_name} onChange={e=>set("full_name",e.target.value)} placeholder={tx("ชื่อ-นามสกุลผู้ปกครอง","Parent full name")} autoComplete="name"/>
-              <input style={inputStyle} type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder={tx("อีเมล","Email")} autoComplete="email"/>
-              <input style={inputStyle} value={form.student_id_no} onChange={e=>set("student_id_no",e.target.value.replace(/\D/g,"").slice(0,13))} placeholder={tx("เลขประจำตัวนักเรียน 13 หลัก","Student's 13-digit ID number")} inputMode="numeric" maxLength="13"/>
-              {studentLookup&&<div style={{padding:"9px 11px",borderRadius:9,background:C.g100,color:C.g600,fontSize:13}}>🔎 {tx("กำลังค้นหาข้อมูลนักเรียน...","Looking up student...")}</div>}
-              {!studentLookup&&studentMatch?.found&&<div style={{padding:"10px 11px",borderRadius:9,background:C.greenL,color:C.green,fontSize:13,lineHeight:1.5}}>✅ <b>{studentMatch.full_name}</b><br/>{studentMatch.class_name||"-"} · {tx("เลขที่","No.")} {studentMatch.student_no||"-"}</div>}
-              {!studentLookup&&studentMatch?.error&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ระบบค้นหานักเรียนยังไม่พร้อม กรุณาแจ้งผู้ดูแลระบบ","Student lookup is not ready. Please contact the administrator.")}</div>}
-              {!studentLookup&&studentMatch&&!studentMatch.found&&!studentMatch.error&&<div style={{padding:"9px 11px",borderRadius:9,background:C.redL,color:C.red,fontSize:13}}>⚠️ {tx("ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบเลขบัตร","Student not found. Check the ID number.")}</div>}
-              <input style={inputStyle} type="password" value={form.password} onChange={e=>set("password",e.target.value)} placeholder={tx("ตั้งรหัสผ่าน อย่างน้อย 8 ตัว","Create password, at least 8 characters")} autoComplete="new-password"/>
-              <input style={inputStyle} type="password" value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder={tx("ยืนยันรหัสผ่าน","Confirm password")} autoComplete="new-password"/>
-              {error&&<div role="alert" style={{background:C.redL,color:C.red,borderRadius:9,padding:"9px 11px",fontSize:13,fontWeight:600}}>⚠️ {error}</div>}
-              <button disabled={busy} style={{padding:12,border:"none",borderRadius:10,background:busy?C.g400:C.navy,color:C.white,fontSize:15,fontWeight:800,cursor:busy?"wait":"pointer"}}>{busy?tx("กำลังลงทะเบียน...","Registering..."):tx("ลงทะเบียนและส่งอีเมลยืนยัน","Register and send confirmation email")}</button>
-            </form>
-          )}
-        </div>
-      </div>
+  const inputStyle={boxSizing:"border-box",width:"100%",minWidth:0,padding:"11px 12px",borderRadius:8,border:`1.5px solid ${C.g200}`,fontSize:16,fontFamily:"inherit",background:C.white};
+  return <div style={{minHeight:"100vh",background:C.bg,padding:"24px 16px 40px",boxSizing:"border-box"}}>
+    <div style={{maxWidth:420,margin:"0 auto",overflowWrap:"anywhere"}}>
+      <button type="button" onClick={onBack} disabled={busy} style={{border:"none",background:"transparent",color:C.navy,fontSize:14,cursor:"pointer",marginBottom:14}}>← {tx("กลับหน้าเข้าสู่ระบบ","Back to sign in")}</button>
+      <section style={{background:C.white,borderRadius:8,padding:20}}>
+        <header style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+          <img src="./icon-192.png" alt="" width="44" height="44" style={{objectFit:"contain",flexShrink:0}}/>
+          <h1 style={{fontSize:18,lineHeight:1.6,margin:0,color:C.navy}}>{tx("ส่งคำขอลงทะเบียนผู้ปกครอง","Request parent registration")}</h1>
+        </header>
+        {sent?<div role="status" style={{color:C.navy,lineHeight:1.8}}>
+          <h2 style={{fontSize:17,color:C.green}}>{tx("รับคำขอแล้ว รอโรงเรียนตรวจสอบ","Request received. Await school review.")}</h2>
+          <p>{tx("ส่งคำขอแล้ว กรุณารอเจ้าหน้าที่ตรวจสอบและดำเนินการลงทะเบียน เมื่อลงทะเบียนสำเร็จ โรงเรียนจะแจ้งกลับทางอีเมลที่กรอกไว้ กรุณาตรวจกล่องจดหมายและจดหมายขยะ โดยไม่ส่งคำขอซ้ำค่ะ","Request sent. Please wait for staff to review and arrange registration. Once registration is complete, the school will notify you at the email address provided. Check your inbox and spam folder, and do not submit again.")}</p>
+          <p>{tx("การส่งคำขอยังไม่ใช่การสร้างบัญชีหรืออนุมัติสิทธิ์ดูข้อมูลนักเรียน","Submitting a request does not create an account or grant access to student records.")}</p>
+          <button onClick={onBack} style={{width:"100%",padding:12,border:0,borderRadius:8,background:C.navy,color:C.white,fontWeight:800}}>{tx("กลับหน้าเข้าสู่ระบบ","Back to sign in")}</button>
+        </div>:<form onSubmit={submit}>
+          <p style={{fontSize:14,lineHeight:1.8,color:C.g600}}>{tx("ขอความกรุณากรอกข้อมูล เพื่อให้โรงเรียนตรวจสอบความสัมพันธ์และดำเนินการลงทะเบียนให้ค่ะ","Please provide these details so the school can check your relationship and arrange registration.")}</p>
+          {fields.map(([key,label,type,maxLength])=><label key={key} style={{display:"block",fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>
+            {label}<input required disabled={busy} aria-label={label} type={type} maxLength={maxLength} value={form[key]} inputMode={key==="studentId"?"numeric":undefined}
+              autoComplete={key==="email"?"email":key==="parent"?"name":"off"} pattern={key==="studentId"?"[0-9]{13}":undefined}
+              onChange={e=>set(key,key==="studentId"?e.target.value.replace(/\D/g,"").slice(0,13):e.target.value)}
+              style={{...inputStyle,marginTop:5}}/>
+          </label>)}
+          <p style={{fontSize:12,lineHeight:1.7,color:C.g600}}>{tx("เลข 13 หลักใช้เฉพาะตรวจสอบในระบบ ข้อความ Telegram แสดงเพียง 4 หลักท้าย ไม่เก็บเลขเต็มไว้ในคำขอนี้ กรุณาอย่าส่งรหัสผ่านหรือ OTP และรอเจ้าหน้าที่ติดต่อกลับทางอีเมลค่ะ","The full ID is used only for an internal check. Telegram shows only its last four digits; this request does not retain the full ID. Never send passwords or OTP codes. Please wait for staff to contact you by email.")}</p>
+          {error&&<p role="alert" style={{fontSize:14,padding:10,background:C.redL,color:C.red,borderRadius:8}}>{error}</p>}
+          <button type="submit" disabled={busy} style={{width:"100%",minHeight:46,padding:12,border:0,borderRadius:8,background:busy?C.g400:C.navy,color:C.white,fontWeight:800,fontSize:15,cursor:busy?"wait":"pointer"}}>{busy?tx("กำลังส่งคำขอ...","Sending request..."):tx("ส่งคำขอให้โรงเรียนตรวจสอบ","Submit request for school review")}</button>
+        </form>}
+      </section>
     </div>
-  );
+  </div>;
 }
 
 function getRecoveryToken(){
@@ -720,7 +709,7 @@ function Login({onLogin}){
         </button>
         <button onClick={()=>{setForgot(true);setErr("");}} style={{width:"100%",padding:"9px",border:"none",background:"transparent",color:C.goldL,fontSize:13,fontWeight:700,cursor:"pointer"}}>{tx("ลืมรหัสผ่าน?","Forgot password?")}</button>
         <button onClick={()=>setRegister(true)} style={{width:"100%",marginTop:10,padding:"11px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.45)",background:"transparent",color:C.white,fontWeight:700,fontSize:14,cursor:"pointer"}}>
-          {tx("ลงทะเบียนผู้ปกครอง","Parent registration")}
+          {tx("ส่งคำขอลงทะเบียนผู้ปกครอง","Request parent registration")}
         </button>
         <button onClick={()=>setSupport(true)} style={{width:"100%",marginTop:9,padding:"10px",border:"none",background:"transparent",color:C.goldL,fontWeight:700,fontSize:13,cursor:"pointer"}}>
           🛟 {tx("ติดต่อผู้ดูแลระบบ","Contact support")}
@@ -4382,6 +4371,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 

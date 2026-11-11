@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v109-home-loading";
+const CACHE = "school-app-github-v110-manual-registration";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
@@ -57,3 +57,4 @@ self.addEventListener("fetch", e => {
     }
   })());
 });
+
