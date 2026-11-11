@@ -1776,10 +1776,10 @@ function ParentTeacherTalk({token,profile,role,student=null,onOpenTuition=null})
         <div ref={messageScrollRef} aria-label="ข้อความสนทนา" onScroll={e=>{const panel=e.currentTarget;followLatestRef.current=panel.scrollHeight-panel.clientHeight-panel.scrollTop<48;}} style={{minHeight:220,maxHeight:430,overflowY:"auto",overflowAnchor:"none",paddingRight:2}}>
           {conversation.length===0?<Empty icon="💬" msg="ยังไม่มีข้อความ เริ่มสนทนาได้เลย"/>:conversation.map(m=>{
             const mine=!m.isTuition&&m.sender_id===profile.id;
-            const canChange=mine&&(isStaff
+            const canChange=!m.isTuition&&(role==="admin"||(mine&&(isStaff
               ?m.teacher_id===profile.id&&["admin","teacher","teacher_parent"].includes(role)
               :m.parent_id===profile.id&&["parent","teacher_parent"].includes(profile.role)
-                &&new Date(m.created_at).getTime()+15*60*1000>chatNow);
+                &&new Date(m.created_at).getTime()+15*60*1000>chatNow)));
             const editing=canChange&&editMessage?.id===m.id;
             return <div key={m.id} style={{display:"flex",justifyContent:mine?"flex-end":"flex-start",margin:"8px 0"}}>
               <div style={{maxWidth:"82%",background:mine?C.navy:C.g100,color:mine?C.white:C.g900,borderRadius:mine?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 12px"}}>
@@ -4195,3 +4195,4 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
