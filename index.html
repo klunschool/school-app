@@ -437,10 +437,10 @@ function ParentRegister({onBack}){
   const submitting=React.useRef(false);
   const set=(key,value)=>setForm(prev=>({...prev,[key]:value}));
   const fields=[
-    ["email",tx("อีเมลสำหรับใช้งานและติดต่อกลับ","Email for your account and replies"),"email",160],
     ["parent",tx("ชื่อ–นามสกุลผู้ปกครอง","Parent full name"),"text",120],
-    ["student",tx("ชื่อ–นามสกุลนักเรียน","Student full name"),"text",120],
+    ["email",tx("อีเมลสำหรับใช้งานและติดต่อกลับ","Email for your account and replies"),"email",160],
     ["studentId",tx("เลขประจำตัวนักเรียน 13 หลัก","13-digit student ID"),"text",13],
+    ["student",tx("ชื่อ–นามสกุลนักเรียน","Student full name"),"text",120],
     ["classroom",tx("ระดับชั้น/ห้อง เช่น ป.2/2","Classroom, e.g. ป.2/2"),"text",30]
   ];
   async function submit(e){
