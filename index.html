@@ -4204,7 +4204,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",padding:"12px",marginBottom:12,border:`1px solid ${C.navy}`,borderRadius:8,background:C.white,color:C.navy,fontSize:14,fontWeight:800,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right"}}>›</span></button>}
+        {parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:12,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}
         {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.3","Version 1.7.3")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
@@ -4223,7 +4223,7 @@ function App(){
     );
     if(tab==="home"){
       if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role} email={session?.user?.email}/>;
-      if(role==="parent")return <div>{parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",padding:"12px",marginBottom:14,border:`1px solid ${C.navy}`,borderRadius:8,background:C.white,color:C.navy,fontSize:14,fontWeight:800,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right"}}>›</span></button>}<ParentView token={token} profile={profile} userId={session?.user?.id}/></div>;
+      if(role==="parent")return <div>{parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:14,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}<ParentView token={token} profile={profile} userId={session?.user?.id}/></div>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
     return null;
@@ -4276,5 +4276,6 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
