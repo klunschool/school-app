@@ -3873,6 +3873,17 @@ const PARENT_GUIDE_TOPICS=[
     "หากสงสัยว่าบัญชีถูกผู้อื่นใช้งาน ให้เปลี่ยนรหัสผ่านและติดต่อผู้ดูแลระบบ"
   ]}
 ];
+const PARENT_GUIDE_ICONS={
+  start:{title:"🚀",steps:["🌐","📝","🔐","📱"]},
+  children:{title:"👨‍👩‍👧‍👦",steps:["➕","🏫","📨","👧"]},
+  attendance:{title:"📅",steps:["🕘","✅","🔎","💬"]},
+  leave:{title:"📝",steps:["📋","🗓️","⏳","✅"]},
+  tuition:{title:"💰",steps:["🧾","📎","⏳","💬","💵"]},
+  chat:{title:"💬",steps:["👧","✍️","🖼️","🔒"]},
+  school:{title:"📢",steps:["📰","🗓️","📊","ℹ️"]},
+  help:{title:"🛟",steps:["🔑","👨‍👩‍👧","📶","📨"]},
+  security:{title:"🛡️",steps:["🔐","🚪","🔒","⚠️"]}
+};
 function ParentUsageGuide(){
   const [query,setQuery]=useState("");
   const search=query.trim().toLocaleLowerCase("th");
@@ -3883,11 +3894,11 @@ function ParentUsageGuide(){
       <div style={{minWidth:0}}><h1 id="parent-guide-heading" style={{fontSize:20,lineHeight:1.5,margin:0}}>คู่มือผู้ปกครอง</h1>
         <div style={{fontSize:12,color:C.g600}}>อัปเดต 11 พฤศจิกายน 2569</div></div>
     </header>
-    <label htmlFor="parent-guide-search" style={{display:"block",fontSize:13,fontWeight:700,marginBottom:6}}>ค้นหาหัวข้อ</label>
+    <label htmlFor="parent-guide-search" style={{display:"block",fontSize:13,fontWeight:700,marginBottom:6}}><span aria-hidden="true">🔎 </span>ค้นหาหัวข้อ</label>
     <input id="parent-guide-search" type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="เช่น ใบลา ค่าเทอม ผูกบัญชี" style={{boxSizing:"border-box",width:"100%",minWidth:0,padding:"11px 12px",border:`1px solid ${C.g200}`,borderRadius:8,fontSize:16,fontFamily:"inherit",marginBottom:12}}/>
     {topics.length===0?<p role="status" style={{fontSize:14,color:C.g600}}>ไม่พบหัวข้อที่ค้นหา</p>:topics.map(t=><details key={t.id} open={search?true:undefined} style={{borderBottom:`1px solid ${C.g200}`,padding:"12px 0"}}>
-      <summary style={{cursor:"pointer",fontSize:15,fontWeight:800,lineHeight:1.6,padding:"4px 0"}}>{t.title}</summary>
-      <ol style={{paddingLeft:22,margin:"12px 0 4px",fontSize:14,lineHeight:1.85,color:C.g700}}>{t.steps.map((step,i)=><li key={i} style={{paddingLeft:3,marginBottom:10}}>{step}</li>)}</ol>
+      <summary style={{cursor:"pointer",fontSize:15,fontWeight:800,lineHeight:1.6,padding:"4px 0"}}><span aria-hidden="true" style={{display:"inline-block",minWidth:28,marginRight:4}}>{PARENT_GUIDE_ICONS[t.id]?.title}</span>{t.title}</summary>
+      <ol style={{paddingLeft:22,margin:"12px 0 4px",fontSize:14,lineHeight:1.85,color:C.g700}}>{t.steps.map((step,i)=><li key={i} style={{paddingLeft:3,marginBottom:10}}><span aria-hidden="true" style={{marginRight:7}}>{PARENT_GUIDE_ICONS[t.id]?.steps[i]}</span>{step}</li>)}</ol>
     </details>)}
   </section>;
 }
@@ -4276,6 +4287,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 
