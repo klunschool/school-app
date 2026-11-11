@@ -3884,19 +3884,114 @@ const PARENT_GUIDE_ICONS={
   help:{title:"🛟",steps:["🔑","👨‍👩‍👧","📶","📨"]},
   security:{title:"🛡️",steps:["🔐","🚪","🔒","⚠️"]}
 };
-function ParentUsageGuide(){
+const PARENT_GUIDE_TOPICS_EN=[
+  {
+    "id": "start",
+    "title": "Getting started",
+    "steps": [
+      "Open the school app in your browser. Choose parent registration if you do not have an account.",
+      "Enter your own details and check your email address. If you receive a verification email, follow its link before signing in.",
+      "Sign in using your registered email address and password.",
+      "On a mobile device, use your browser menu to add the app to your home screen."
+    ]
+  },
+  {
+    "id": "children",
+    "title": "Linking your children",
+    "steps": [
+      "On the home screen, choose Add child and enter the complete 13-digit student identifier.",
+      "Submit your request and wait for the school to verify your relationship and approve it.",
+      "If your request is pending or rejected, contact the administrator. Do not create another account.",
+      "If you have more than one child, select the correct student before opening each menu."
+    ]
+  },
+  {
+    "id": "attendance",
+    "title": "Attendance and scan history",
+    "steps": [
+      "Select your child. Open Attendance to see daily status, or Scan history to see arrival and departure times.",
+      "Present means attendance was recorded. Late means arrival was recorded after the school cutoff. On leave means the leave request was approved.",
+      "A missing scan does not always mean the student was absent. Records depend on the reporting start date and school verification.",
+      "For forgotten or damaged cards, or incorrect times, contact the homeroom teacher and provide the date to check."
+    ]
+  },
+  {
+    "id": "leave",
+    "title": "Leave requests",
+    "steps": [
+      "Select the Leave request menu for the correct child.",
+      "Enter the dates, leave type and reason in the form. Check the details before submitting.",
+      "Check the request status after submission. Submitting a request does not mean it has been approved.",
+      "Approved leave appears in attendance records for the approved dates. Contact the teacher if details need correcting."
+    ]
+  },
+  {
+    "id": "tuition",
+    "title": "Tuition and payments",
+    "steps": [
+      "Open Tuition and check the student name, invoice, fee items and current outstanding balance.",
+      "After a bank transfer, choose Report payment, enter the amount and attach a clearly readable transfer slip. Select the paid items if the form offers that option.",
+      "Submit your evidence once and wait for review. Pending amounts are not yet approved payments. Do not pay the same amount again just because the balance has not changed.",
+      "If rejected, read the reason and contact the teacher before submitting corrected evidence.",
+      "For cash payments at school, keep your receipt. Staff will record the payment. Check the app balance and history after it has been saved."
+    ]
+  },
+  {
+    "id": "chat",
+    "title": "Chatting with teachers and attaching images",
+    "steps": [
+      "Select your child and open Chat to discuss matters relating to that student.",
+      "Enter the details and relevant date, then press Send. Always check the selected child before sending.",
+      "To send an image, choose Attach image, check the selected picture and submit using the form.",
+      "Share only necessary information. Never send passwords or OTP codes. Submit transfer slips through Tuition so payments can be reviewed correctly."
+    ]
+  },
+  {
+    "id": "school",
+    "title": "News, timetables and grades",
+    "steps": [
+      "Open Announcements to read school news.",
+      "Select your child and open Timetable to see the schedule published for their class.",
+      "Open Grades to see records the school has made available. Ask the homeroom teacher if there are no records yet.",
+      "Some menus may not yet be enabled or contain data. You do not need to register again."
+    ]
+  },
+  {
+    "id": "help",
+    "title": "Common problems and contacting support",
+    "steps": [
+      "Forgotten password: choose Forgot password on the sign-in screen, check your inbox and spam folder, and follow the email link.",
+      "Child not shown: check your linking request status and make sure you signed in with the email address used for the request.",
+      "Image or slip upload failed: check your connection and the allowed file type and size. Before retrying, check whether the submission was already saved.",
+      "If you still need help, choose Contact administrator on the sign-in screen. Provide your contact email, issue, date and time, and verification details only in the designated fields. Never send passwords or OTP codes."
+    ]
+  },
+  {
+    "id": "security",
+    "title": "Account security",
+    "steps": [
+      "Use your own account and a password that you do not use for other services. Never share passwords or OTP codes.",
+      "Always sign out after using a shared phone or computer.",
+      "Do not forward other children's images or personal details. If you see information unrelated to your children, stop viewing it and inform the school.",
+      "If you suspect someone else is using your account, change your password and contact the administrator."
+    ]
+  }
+];
+function ParentUsageGuide({lang="th"}){
+  const english=lang==="en";
+  const text=(th,en)=>english?en:th;
   const [query,setQuery]=useState("");
   const search=query.trim().toLocaleLowerCase("th");
-  const topics=PARENT_GUIDE_TOPICS.filter(t=>`${t.title} ${t.steps.join(" ")}`.toLocaleLowerCase("th").includes(search));
+  const topics=(english?PARENT_GUIDE_TOPICS_EN:PARENT_GUIDE_TOPICS).filter(t=>`${t.title} ${t.steps.join(" ")}`.toLocaleLowerCase("th").includes(search));
   return <section aria-labelledby="parent-guide-heading" style={{background:C.white,padding:16,color:C.navy,overflowWrap:"anywhere"}}>
     <header style={{display:"flex",gap:12,alignItems:"center",marginBottom:16}}>
-      <img src="./icon-192.png" alt="ตราโรงเรียนกลั่นวิทยา" width="44" height="44" style={{flexShrink:0,objectFit:"contain"}}/>
-      <div style={{minWidth:0}}><h1 id="parent-guide-heading" style={{fontSize:20,lineHeight:1.5,margin:0}}>คู่มือผู้ปกครอง</h1>
-        <div style={{fontSize:12,color:C.g600}}>อัปเดต 11 พฤศจิกายน 2569</div></div>
+      <img src="./icon-192.png" alt={text("ตราโรงเรียนกลั่นวิทยา","Klunwittaya School emblem")} width="44" height="44" style={{flexShrink:0,objectFit:"contain"}}/>
+      <div style={{minWidth:0}}><h1 id="parent-guide-heading" style={{fontSize:20,lineHeight:1.5,margin:0}}>{text("คู่มือผู้ปกครอง","Parent guide")}</h1>
+        <div style={{fontSize:12,color:C.g600}}>{text("อัปเดต 11 พฤศจิกายน 2569","Updated 11 November 2026")}</div></div>
     </header>
-    <label htmlFor="parent-guide-search" style={{display:"block",fontSize:13,fontWeight:700,marginBottom:6}}><span aria-hidden="true">🔎 </span>ค้นหาหัวข้อ</label>
-    <input id="parent-guide-search" type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="เช่น ใบลา ค่าเทอม ผูกบัญชี" style={{boxSizing:"border-box",width:"100%",minWidth:0,padding:"11px 12px",border:`1px solid ${C.g200}`,borderRadius:8,fontSize:16,fontFamily:"inherit",marginBottom:12}}/>
-    {topics.length===0?<p role="status" style={{fontSize:14,color:C.g600}}>ไม่พบหัวข้อที่ค้นหา</p>:topics.map(t=><details key={t.id} open={search?true:undefined} style={{borderBottom:`1px solid ${C.g200}`,padding:"12px 0"}}>
+    <label htmlFor="parent-guide-search" style={{display:"block",fontSize:13,fontWeight:700,marginBottom:6}}><span aria-hidden="true">🔎 </span>{text("ค้นหาหัวข้อ","Search topics")}</label>
+    <input id="parent-guide-search" type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder={text("เช่น ใบลา ค่าเทอม ผูกบัญชี","For example: leave, tuition, linking")} style={{boxSizing:"border-box",width:"100%",minWidth:0,padding:"11px 12px",border:`1px solid ${C.g200}`,borderRadius:8,fontSize:16,fontFamily:"inherit",marginBottom:12}}/>
+    {topics.length===0?<p role="status" style={{fontSize:14,color:C.g600}}>{text("ไม่พบหัวข้อที่ค้นหา","No matching topics found")}</p>:topics.map(t=><details key={t.id} open={search?true:undefined} style={{borderBottom:`1px solid ${C.g200}`,padding:"12px 0"}}>
       <summary style={{cursor:"pointer",fontSize:15,fontWeight:800,lineHeight:1.6,padding:"4px 0"}}><span aria-hidden="true" style={{display:"inline-block",minWidth:28,marginRight:4}}>{PARENT_GUIDE_ICONS[t.id]?.title}</span>{t.title}</summary>
       <ol style={{paddingLeft:22,margin:"12px 0 4px",fontSize:14,lineHeight:1.85,color:C.g700}}>{t.steps.map((step,i)=><li key={i} style={{paddingLeft:3,marginBottom:10}}><span aria-hidden="true" style={{marginRight:7}}>{PARENT_GUIDE_ICONS[t.id]?.steps[i]}</span>{step}</li>)}</ol>
     </details>)}
@@ -4186,7 +4281,7 @@ function App(){
     // sub pages
     if(subPage){
       const Back=()=><button onClick={goBack} style={{background:C.g100,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:14,marginBottom:14}}>← {tx("กลับ","Back")}</button>;
-      if(subPage==="parent-guide")return <div><Back/>{parentGuideAllowed&&<ParentUsageGuide/>}</div>;
+      if(subPage==="parent-guide")return <div><Back/>{parentGuideAllowed&&<ParentUsageGuide lang={lang}/>}</div>;
       if(subPage==="checkin")return <div><Back/><AttendHist token={token} role={role} email={session?.user?.email}/></div>;
       if(subPage==="attendance")return <div><Back/><AttendCheck token={token} profile={profile}/></div>;
       if(subPage==="schedule"&&role==="teacher")return <div><Back/><TeacherSchedule token={token} profile={profile}/></div>;
@@ -4215,7 +4310,7 @@ function App(){
     if(tab==="settings")return(
       <div style={{background:C.white,borderRadius:16,padding:20,boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.navy,marginBottom:16}}>⚙️ {tx("การตั้งค่า","Settings")}</div>
-        {parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:12,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}
+        {parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:12,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>{tx("คู่มือผู้ปกครอง","Parent guide")} <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}
         {[{icon:"👤",label:tx("ข้อมูลส่วนตัว","Profile")},{icon:"🔐",label:tx("เปลี่ยนรหัสผ่าน","Change password"),action:()=>goPage("password")},{icon:"🔔",label:tx("การแจ้งเตือน","Notifications")},{icon:"ℹ️",label:tx("เวอร์ชัน 1.7.3","Version 1.7.3")}].map((x,i)=>(
           <div key={i} onClick={x.action} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 0",borderBottom:`1px solid ${C.g100}`,cursor:x.action?"pointer":"default"}}>
             <span style={{fontSize:20}}>{x.icon}</span><div style={{flex:1,fontSize:14,fontWeight:600,color:C.g700}}>{x.label}</div><span style={{color:C.g400}}>›</span>
@@ -4234,7 +4329,7 @@ function App(){
     );
     if(tab==="home"){
       if(["teacher","finance","admin"].includes(role))return <TeacherHomeView token={token} profile={profile} setPage={goPage} role={role} email={session?.user?.email}/>;
-      if(role==="parent")return <div>{parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:14,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>คู่มือผู้ปกครอง <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}<ParentView token={token} profile={profile} userId={session?.user?.id}/></div>;
+      if(role==="parent")return <div>{parentGuideAllowed&&<button onClick={()=>goPage("parent-guide")} style={{width:"100%",minHeight:54,padding:"13px 16px",marginBottom:14,border:"2px solid #193b6d",borderRadius:8,background:"#ffe066",color:"#12324f",boxShadow:"0 3px 0 #c59a18",fontSize:16,fontWeight:900,textAlign:"left",cursor:"pointer"}}>{tx("คู่มือผู้ปกครอง","Parent guide")} <span aria-hidden="true" style={{float:"right",fontSize:22,lineHeight:1}}>›</span></button>}<ParentView token={token} profile={profile} userId={session?.user?.id}/></div>;
       return <StudentHome token={token} profile={profile} studentId={null} studentInfo={null} onPageChange={goPage}/>;
     }
     return null;
@@ -4287,6 +4382,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 
