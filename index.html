@@ -75,8 +75,24 @@ async function notifyParentApproved(requestId,token){
   return data;
 }
 async function signIn(email,pw){
-  const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
-  const d=await res.json();if(!res.ok)throw new Error(d.error_description||"เข้าสู่ระบบไม่สำเร็จ");return d;
+  let res,d;
+  try{
+    res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw}),signal:AbortSignal.timeout(20000)});
+    d=await res.json();
+  }catch(error){reportPasswordLoginFailure(email,"network_error");throw new Error(tx("ติดต่อระบบเข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่","Could not reach sign-in service. Please try again."));}
+  if(!res.ok){
+    const code=d.error_code||d.code;
+    const reason=res.status===429?"rate_limited":code==="email_not_confirmed"?"email_not_confirmed":code==="invalid_credentials"?"invalid_credentials":"other";
+    reportPasswordLoginFailure(email,reason);
+    throw new Error(d.error_description||d.msg||"เข้าสู่ระบบไม่สำเร็จ");
+  }
+  return d;
+}
+function reportPasswordLoginFailure(email,reason){
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/report_password_login_failure`,{
+    method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json"},
+    body:JSON.stringify({p_email:String(email||"").trim().toLowerCase(),p_reason:reason}),signal:AbortSignal.timeout(4000)
+  }).catch(()=>{});
 }
 async function requestPasswordReset(email){
   const redirectTo=`${location.origin}${location.pathname}`;
@@ -2132,6 +2148,58 @@ function SecondaryAdminSignIns({token}){
   </section>;
 }
 
+function PrimaryPasswordReport({token}){
+  const [date,setDate]=useState(""),[search,setSearch]=useState(""),[query,setQuery]=useState("");
+  const [offset,setOffset]=useState(0),[reload,setReload]=useState(0),[data,setData]=useState(null),[error,setError]=useState("");
+  useEffect(()=>{
+    const controller=new AbortController();let active=true;
+    setData(null);setError("");
+    const timer=setTimeout(()=>controller.abort(),15000);
+    fetch(`${SUPABASE_URL}/rest/v1/rpc/get_primary_password_report`,{
+      method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+      body:JSON.stringify({p_date:date||null,p_search:query,p_offset:offset}),signal:controller.signal
+    }).then(async r=>{if(!r.ok)throw new Error("report_unavailable");return r.json();})
+      .then(r=>{if(active)setData(r);}).catch(()=>{if(active)setError(tx("โหลดรายงานไม่สำเร็จ กรุณาลองใหม่หรือตรวจสิทธิ์","Could not load report. Retry or check access."));})
+      .finally(()=>clearTimeout(timer));
+    return()=>{active=false;clearTimeout(timer);controller.abort();};
+  },[token,date,query,offset,reload]);
+  const reasons={invalid_credentials:tx("อีเมลหรือรหัสผ่านไม่ถูกต้อง","Invalid credentials"),email_not_confirmed:tx("ยังไม่ยืนยันอีเมล","Email not confirmed"),rate_limited:tx("คำขอเกินกำหนด","Rate limited"),network_error:tx("การเชื่อมต่อขัดข้อง","Connection error"),other:tx("ข้อผิดพลาดอื่น","Other error")};
+  const field={width:"100%",minWidth:0,padding:10,border:`1px solid ${C.g200}`,borderRadius:8,fontSize:14};
+  return <section style={{background:C.white,borderRadius:8,padding:16,overflowWrap:"anywhere"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+      <h2 style={{fontSize:17,color:C.navy,margin:0}}>{tx("ประวัติเปลี่ยนรหัสผ่าน","Password Change History")}</h2>
+      <button type="button" aria-label={tx("รีเฟรชรายงาน","Refresh report")} title={tx("รีเฟรชรายงาน","Refresh report")} onClick={()=>setReload(v=>v+1)} style={{width:40,height:40,flexShrink:0}}>↻</button>
+    </div>
+    <form onSubmit={e=>{e.preventDefault();setQuery(search.trim());setOffset(0);}} style={{display:"grid",gap:8,marginTop:14}}>
+      <label style={{fontSize:13}}>{tx("วันที่เปลี่ยนรหัส (เวลาไทย)","Change date (Thailand time)")}<input aria-label="Change date" type="date" value={date} onChange={e=>{setDate(e.target.value);setOffset(0);}} style={field}/></label>
+      <div style={{display:"flex",gap:8}}><input aria-label={tx("ค้นหาชื่อหรืออีเมล","Search name or email")} value={search} maxLength={100} onChange={e=>setSearch(e.target.value)} placeholder={tx("ชื่อหรืออีเมล","Name or email")} style={field}/><button type="submit" title={tx("ค้นหา","Search")} aria-label={tx("ค้นหา","Search")} style={{width:40,flexShrink:0}}>⌕</button></div>
+    </form>
+    {error?<p role="alert" style={{color:C.red}}>{error}</p>:!data?<p role="status">{tx("กำลังโหลด…","Loading…")}</p>:<>
+      <p style={{fontSize:13,color:C.g600}}>{data.count} {tx("รายการ","records")}</p>
+      {!data.rows.length&&<p>{tx("ไม่มีประวัติที่ตรงกับเงื่อนไข","No matching history")}</p>}
+      {data.rows.map(row=>{
+        const success=!!row.successful_login_at,failed=row.failure_count>0;
+        const status=success?tx("เข้าสู่ระบบสำเร็จหลังเปลี่ยน","Signed in after change"):failed?tx("แอปรายงานว่าเข้าไม่สำเร็จ","App reported unsuccessful sign-in"):tx("ยังไม่พบผลเข้าสู่ระบบหลังเปลี่ยน","No subsequent sign-in recorded");
+        const color=success?C.green:failed?C.red:C.g600;
+        return <article key={row.id} style={{padding:"14px 0",borderTop:`1px solid ${C.g200}`}}>
+          <strong>{row.full_name||row.email}</strong><div style={{fontSize:12,color:C.g600}}>{row.email}</div>
+          <div style={{fontSize:13,marginTop:6}}>{tx("เปลี่ยนเมื่อ","Changed")}: {formatThaiDateTime(row.changed_at)}</div>
+          <div style={{fontSize:12,color:C.g600}}>{row.source==="server"?tx("ยืนยันการเปลี่ยนจากเซิร์ฟเวอร์","Change confirmed by server"):tx("ประวัติเดิมที่แอปบันทึก","Legacy app-recorded change")}</div>
+          <p style={{fontSize:13,fontWeight:800,color,margin:"8px 0"}}>{status}</p>
+          {success&&<div style={{fontSize:13}}>{tx("เข้าสำเร็จเมื่อ","Successful sign-in")}: {formatThaiDateTime(row.successful_login_at)}</div>}
+          {failed&&<div style={{fontSize:12,color:C.red}}>{tx("แอปรายงานการเข้าล้มเหลว","App-reported failures")}: {row.failure_count} {tx("ครั้ง","attempts")}</div>}
+          {row.attempts.length>0&&<details style={{marginTop:8,fontSize:13}}><summary style={{cursor:"pointer",fontWeight:700}}>{tx("ผลการเข้าล่าสุด","Recent Sign-in Results")}</summary>
+            {row.attempts.map((a,i)=><div key={i} style={{padding:"7px 0",borderBottom:`1px solid ${C.g200}`}}>
+              {formatThaiDateTime(a.occurred_at)}<br/>{a.kind==="login_success"?tx("เข้าสำเร็จ · เซิร์ฟเวอร์ยืนยัน","Success · server confirmed"):tx("ไม่สำเร็จ · แอปรายงาน","Unsuccessful · app reported")+" · "+(reasons[a.reason]||reasons.other)}
+            </div>)}
+          </details>}
+        </article>;
+      })}
+      {data.count>25&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><button disabled={!offset} onClick={()=>setOffset(v=>v-25)}>{tx("ก่อนหน้า","Previous")}</button><span>{Math.floor(offset/25)+1} / {Math.ceil(data.count/25)}</span><button disabled={offset+25>=data.count} onClick={()=>setOffset(v=>v+25)}>{tx("ถัดไป","Next")}</button></div>}
+    </>}
+  </section>;
+}
+
 function ParentUsageReport({token}){
   const [rows,setRows]=useState([]);
   const [classId,setClassId]=useState("all");
@@ -3645,6 +3713,7 @@ function TeacherHomeView({token,profile,setPage,role,email}){
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-report",icon:"👪",label:tx("ผู้ปกครอง","Parents"),bg:"linear-gradient(135deg,#475569,#64748b)",action:()=>setPage("parent-report")});
   if(["teacher","teacher_parent","admin"].includes(role))menus.push({id:"parent-usage",icon:"📱",label:tx("เข้าใช้งานผู้ปกครอง","Parent usage"),bg:"linear-gradient(135deg,#2563eb,#06b6d4)",action:()=>setPage("parent-usage")});
   if(role==="admin"&&email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)menus.push({id:"admin-signins",icon:"🕐",label:"การเข้าใช้แอดมิน",bg:"#0f766e",action:()=>setPage("admin-signins")});
+  if(role==="admin"&&email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)menus.push({id:"password-report",icon:"🔐",label:tx("ประวัติเปลี่ยนรหัสผ่าน","Password History"),bg:"#b91c1c",action:()=>setPage("password-report")});
   if(role==="admin")menus.push({id:"student-management",icon:"🎓",label:tx("จัดการนักเรียน","Students"),bg:"linear-gradient(135deg,#0f766e,#16a34a)",action:()=>setPage("student-management")});
   if(role==="admin")menus.push({id:"reports",icon:"📈",label:tx("รายงาน","Reports"),bg:"linear-gradient(135deg,#2563eb,#0f766e)",action:()=>setPage("reports")});
   if(role==="admin")menus.push({id:"parent-requests",icon:"👪",label:tx("คำขอผู้ปกครอง","Parent requests"),bg:"linear-gradient(135deg,#475569,#64748b)",badge:parentRequestCount,action:()=>setPage("parent-requests")});
@@ -4288,6 +4357,7 @@ function App(){
       if(subPage==="parent-report"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><HomeroomParentReport token={token} profile={profile} role={role}/></div>;
       if(subPage==="parent-usage"&&["teacher","teacher_parent","admin"].includes(role))return <div><Back/><ParentUsageReport token={token}/></div>;
       if(subPage==="admin-signins"&&role==="admin"&&session?.user?.email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)return <div><Back/><SecondaryAdminSignIns token={token}/></div>;
+      if(subPage==="password-report"&&role==="admin"&&session?.user?.email?.toLowerCase()===PRIMARY_ADMIN_EMAIL)return <div><Back/><PrimaryPasswordReport token={token}/></div>;
       if(subPage==="student-management"&&role==="admin")return <div><Back/><AdminStudentManagement token={token}/></div>;
       if(subPage==="reports"&&role==="admin")return <div><Back/><AdminReports token={token} profile={profile}/></div>;
       if(subPage==="supply-list"&&role==="admin")return <div><Back/><SupplyListPage/></div>;
@@ -4371,6 +4441,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 

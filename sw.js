@@ -1,4 +1,4 @@
-const CACHE = "school-app-github-v111-student-id-label";
+const CACHE = "school-app-github-v112-password-report";
 const SCAN_LIMITED_EMAIL = "scan.appklunschool@gmail.com";
 const ASSETS = [
   "./",
@@ -57,4 +57,5 @@ self.addEventListener("fetch", e => {
     }
   })());
 });
+
 
