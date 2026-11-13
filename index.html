@@ -451,11 +451,12 @@ function ParentRegister({onBack}){
   const [form,setForm]=useState({email:"",parent:"",student:"",studentId:"",classroom:""});
   const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [sent,setSent]=useState(false);
   const submitting=React.useRef(false);
+  const [linkedWarning,setLinkedWarning]=useState(false);
   const set=(key,value)=>setForm(prev=>({...prev,[key]:value}));
   const fields=[
     ["parent",tx("ชื่อ–นามสกุลผู้ปกครอง","Parent full name"),"text",120],
     ["email",tx("อีเมลสำหรับใช้งานและติดต่อกลับ","Email for your account and replies"),"email",160],
-    ["studentId",tx("เลขประจำตัว 13 หลักของนักเรียน","Student's 13-digit ID number"),"text",13],
+    ["studentId",tx("เลขประจำตัว 4 ตัวท้ายของนักเรียน","Last 4 digits of the student ID"),"text",4],
     ["student",tx("ชื่อ–นามสกุลนักเรียน","Student full name"),"text",120],
     ["classroom",tx("ระดับชั้น/ห้อง เช่น ป.2/2","Classroom, e.g. ป.2/2"),"text",30]
   ];
@@ -464,16 +465,16 @@ function ParentRegister({onBack}){
     const details=Object.fromEntries(Object.entries(form).map(([key,value])=>[key,value.trim()]));
     if(!Object.values(details).every(Boolean))return setError(tx("กรุณากรอกข้อมูลให้ครบทั้ง 5 ช่อง","Please complete all five fields"));
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email))return setError(tx("กรุณากรอกอีเมลให้ถูกต้อง","Enter a valid email address"));
-    if(!/^[0-9]{13}$/.test(details.studentId))return setError(tx("กรุณากรอกเลขประจำตัวนักเรียนให้ครบ 13 หลัก","Enter the complete 13-digit student ID"));
+    if(!/^[0-9]{4}$/.test(details.studentId))return setError(tx("กรุณากรอกเลขประจำตัวนักเรียน 4 ตัวท้ายให้ครบ","Enter exactly the last 4 digits of the student ID"));
     submitting.current=true;setBusy(true);setError("");
     try{
-      await notifyTelegramSupport({
+      const result=await notifyTelegramSupport({
         email:details.email.toLowerCase(),category:"registration",requestType:"parent_registration",
         message:"ขอให้เจ้าหน้าที่ตรวจสอบความสัมพันธ์และดำเนินการลงทะเบียนผู้ปกครอง",
         verification:{parent:details.parent,student:details.student,classroom:details.classroom,studentId:details.studentId},
         shareVerification:true
       });
-      setSent(true);setForm({email:"",parent:"",student:"",studentId:"",classroom:""});
+      setLinkedWarning(result.alreadyLinked===true);setSent(true);setForm({email:"",parent:"",student:"",studentId:"",classroom:""});
     }catch{setError(tx("ส่งคำขอไม่สำเร็จ หรือยังยืนยันการส่งไม่ได้ กรุณาติดต่อผู้ดูแลก่อนส่งซ้ำ","Submission failed or could not be confirmed. Contact support before sending again."));}
     finally{submitting.current=false;setBusy(false);}
   }
@@ -487,6 +488,7 @@ function ParentRegister({onBack}){
           <h1 style={{fontSize:18,lineHeight:1.6,margin:0,color:C.navy}}>{tx("ส่งคำขอลงทะเบียนผู้ปกครอง","Request parent registration")}</h1>
         </header>
         {sent?<div role="status" style={{color:C.navy,lineHeight:1.8}}>
+          {linkedWarning&&<p role="alert" style={{padding:12,border:"1px solid #c47700",borderRadius:8,background:"#fff6d9",color:"#754500"}}>{tx("นักเรียนคนนี้มีบัญชีผู้ปกครองผูกไว้แล้ว หากต้องการเปลี่ยนบัญชีหรือเพิ่มบุตรหลาน กรุณารอเจ้าหน้าที่ตรวจสอบ คำขอของคุณถูกส่งให้โรงเรียนแล้ว โดยยังไม่มีการเปลี่ยนสิทธิ์","This student already has a linked parent account. Your request has been sent to the school for review. No account links or access permissions have changed.")}</p>}
           <h2 style={{fontSize:17,color:C.green}}>{tx("รับคำขอแล้ว รอโรงเรียนตรวจสอบ","Request received. Await school review.")}</h2>
           <p>{tx("ส่งคำขอแล้ว กรุณารอเจ้าหน้าที่ตรวจสอบและดำเนินการลงทะเบียน เมื่อลงทะเบียนสำเร็จ โรงเรียนจะแจ้งกลับทางอีเมลที่กรอกไว้ กรุณาตรวจกล่องจดหมายและจดหมายขยะ โดยไม่ส่งคำขอซ้ำค่ะ","Request sent. Please wait for staff to review and arrange registration. Once registration is complete, the school will notify you at the email address provided. Check your inbox and spam folder, and do not submit again.")}</p>
           <p>{tx("การส่งคำขอยังไม่ใช่การสร้างบัญชีหรืออนุมัติสิทธิ์ดูข้อมูลนักเรียน","Submitting a request does not create an account or grant access to student records.")}</p>
@@ -495,11 +497,11 @@ function ParentRegister({onBack}){
           <p style={{fontSize:14,lineHeight:1.8,color:C.g600}}>{tx("ขอความกรุณากรอกข้อมูล เพื่อให้โรงเรียนตรวจสอบความสัมพันธ์และดำเนินการลงทะเบียนให้ค่ะ","Please provide these details so the school can check your relationship and arrange registration.")}</p>
           {fields.map(([key,label,type,maxLength])=><label key={key} style={{display:"block",fontSize:14,fontWeight:700,color:C.navy,marginBottom:12}}>
             {label}<input required disabled={busy} aria-label={label} type={type} maxLength={maxLength} value={form[key]} inputMode={key==="studentId"?"numeric":undefined}
-              autoComplete={key==="email"?"email":key==="parent"?"name":"off"} pattern={key==="studentId"?"[0-9]{13}":undefined}
-              onChange={e=>set(key,key==="studentId"?e.target.value.replace(/\D/g,"").slice(0,13):e.target.value)}
+              autoComplete={key==="email"?"email":key==="parent"?"name":"off"} pattern={key==="studentId"?"[0-9]{4}":undefined}
+              onChange={e=>set(key,key==="studentId"?e.target.value.replace(/\D/g,"").slice(0,4):e.target.value)}
               style={{...inputStyle,marginTop:5}}/>
           </label>)}
-          <p style={{fontSize:12,lineHeight:1.7,color:C.g600}}>{tx("เลข 13 หลักใช้เฉพาะตรวจสอบในระบบ ข้อความ Telegram แสดงเพียง 4 หลักท้าย ไม่เก็บเลขเต็มไว้ในคำขอนี้ กรุณาอย่าส่งรหัสผ่านหรือ OTP และรอเจ้าหน้าที่ติดต่อกลับทางอีเมลค่ะ","The full ID is used only for an internal check. Telegram shows only its last four digits; this request does not retain the full ID. Never send passwords or OTP codes. Please wait for staff to contact you by email.")}</p>
+          <p style={{fontSize:12,lineHeight:1.7,color:C.g600}}>{tx("กรอกเฉพาะเลข 4 ตัวท้ายของนักเรียน โรงเรียนจะตรวจร่วมกับชื่อและห้อง ข้อมูลนี้ไม่ใช่หลักฐานอนุมัติสิทธิ์ กรุณาอย่าส่งเลข 13 หลัก รหัสผ่าน หรือ OTP","Enter only the last four digits. The school checks them together with the student name and classroom. These details do not authorize access. Never send the full ID, passwords, or OTP codes.")}</p>
           {error&&<p role="alert" style={{fontSize:14,padding:10,background:C.redL,color:C.red,borderRadius:8}}>{error}</p>}
           <button type="submit" disabled={busy} style={{width:"100%",minHeight:46,padding:12,border:0,borderRadius:8,background:busy?C.g400:C.navy,color:C.white,fontWeight:800,fontSize:15,cursor:busy?"wait":"pointer"}}>{busy?tx("กำลังส่งคำขอ...","Sending request..."):tx("ส่งคำขอให้โรงเรียนตรวจสอบ","Submit request for school review")}</button>
         </form>}
@@ -4441,6 +4443,7 @@ if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.s
 </script>
 </body>
 </html>
+
 
 
 
