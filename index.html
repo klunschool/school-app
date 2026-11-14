@@ -1990,7 +1990,7 @@ function HomeroomParentReport({token,profile,role}){
       cls=[...(cls||[])].sort((a,b)=>classSortValue(a.name)-classSortValue(b.name)||String(a.name).localeCompare(String(b.name),"th"));
       const ids=cls.map(c=>c.id).filter(Boolean);
       const stu=ids.length?await sbFetch(`students?class_id=in.(${ids.join(",")})&select=id,full_name,student_no,class_id,classes(name)&order=class_id.asc,student_no.asc`,{token}).catch(()=>[]):[];
-      const parentLinks=await sbFetch("rpc/teacher_parent_link_report",{method:"POST",token,body:"{}"}).catch(()=>[]);
+      const parentLinks=await sbFetch(role==="admin"?"rpc/admin_parent_link_email_report":"rpc/teacher_parent_link_report",{method:"POST",token,body:"{}"}).catch(()=>[]);
       setClasses(cls);
       setStudents([...(stu||[])].sort((a,b)=>classSortValue(a.classes?.name)-classSortValue(b.classes?.name)||Number(a.student_no||0)-Number(b.student_no||0)));
       setLinks(parentLinks||[]);
@@ -2043,7 +2043,10 @@ function HomeroomParentReport({token,profile,role}){
             <div style={{minWidth:0}}>
               <div style={{fontSize:13,fontWeight:900,color:C.navy}}>{s.full_name}</div>
               <div style={{fontSize:11,color:C.g400}}>{s.classes?.name||"-"} · เลขที่ {s.student_no||"-"}</div>
-              {ok&&<div style={{fontSize:11,color:C.green,marginTop:3,fontWeight:800}}>ผู้ปกครอง: {parents.map(p=>p.parent_name||"ไม่ระบุชื่อ").join(", ")}</div>}
+              {ok&&parents.map(p=><div key={p.parent_id} style={{fontSize:11,marginTop:3,overflowWrap:"anywhere"}}>
+                <div style={{color:C.green,fontWeight:800}}>ผู้ปกครอง: {p.parent_name||"ไม่ระบุชื่อ"}</div>
+                {role==="admin"&&<div style={{color:C.g600,marginTop:2}}>อีเมล: {p.parent_email||"ไม่พบอีเมลบัญชี"}</div>}
+              </div>)}
             </div>
             <span style={{alignSelf:"center",background:ok?C.greenL:C.redL,color:ok?C.green:C.red,borderRadius:99,padding:"4px 9px",fontSize:11,fontWeight:900,whiteSpace:"nowrap"}}>{ok?"ผูกแล้ว":"ยังไม่ผูก"}</span>
           </div>;
